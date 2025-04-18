@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "codechat-daemon"
+version = "0.1.0"
+description = "The CodeChat indexing + serving daemon"
+authors = ["Dion van Huyssteen <dion@darkervision.com>"]
+# where to find your package code
+packages = [
+  { include = "codechat", from = "." }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+fastapi = "^0.95.2"
+uvicorn = { extras = ["standard"], version = "^0.22.0" }
+# add any other runtime deps here
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.4"
+
+[build-system]
+requires = ["poetry-core>=1.7.1"]
+build-backend = "poetry.core.masonry.api"
