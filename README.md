@@ -2,7 +2,7 @@
 Integrate multi LLM with your code locally, and integrate that with CLI and VS Code
 
 # High-level Architecture
-
+```text
 ┌───────────────────────────┐
 │        VS Code UI         │  (chat panel, inline autocomplete,
 │  Code Chat extension      │   quick‑fix actions)               │
@@ -21,8 +21,8 @@ Integrate multi LLM with your code locally, and integrate that with CLI and VS C
 │  pluggable LLM back‑ends  │  (OpenAI, Anthropic, Ollama, LM Studio,
 │  & tool runners           │   or your own containerised model)      │
 └───────────────────────────┘
-
-
+```
+```
 # Folder Layout
 .
 │   .dockerignore
@@ -44,3 +44,4 @@ Integrate multi LLM with your code locally, and integrate that with CLI and VS C
 │       doctor.sh
 │
 └───vscode-extension
+```
