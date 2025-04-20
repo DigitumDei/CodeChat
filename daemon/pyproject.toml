@@ -5,14 +5,20 @@ description = "The CodeChat indexing + serving daemon"
 authors = ["Dion van Huyssteen <dion@darkervision.com>"]
 # where to find your package code
 packages = [
-  { include = "codechat", from = "." }
+  { include = "codechat" }
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-fastapi = "^0.95.2"
-uvicorn = { extras = ["standard"], version = "^0.22.0" }
-# add any other runtime deps here
+python = "^3.8"
+click = "^8.1"
+watchdog = "^2.1"
+faiss-cpu = "1.8.*"
+networkx = "^2.8"
+fastapi = "^0.95"
+uvicorn = "^0.22"
+
+[tool.poetry.scripts]
+codechat = "codechat.cli:main"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.4"
