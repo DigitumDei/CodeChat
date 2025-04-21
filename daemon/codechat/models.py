@@ -1,5 +1,11 @@
-from typing import List, Literal
+from enum import Enum
+from typing import List, Literal, Tuple, TypeAlias 
 from pydantic import BaseModel, Field
+
+class ProviderType(str, Enum):
+    OPENAI   = "openai"
+    ANTHROPIC = "anthropic"
+    GEMINI   = "gemini"
 
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"] = Field(
@@ -8,7 +14,7 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="The text content of the message")
 
 class QueryRequest(BaseModel):
-    provider: Literal["openai", "anthropic", "gemini"] = Field(
+    provider: ProviderType = Field(
         ..., description="Which LLM backend to use"
     )
     model: str = Field(..., description="The model name (e.g. gpt-4, claude-v1)")

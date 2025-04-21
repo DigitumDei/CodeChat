@@ -1,29 +1,56 @@
 from codechat.prompt import PromptManager
-from codechat.models import QueryRequest
+from codechat.models import ProviderType, QueryRequest
 
 class LLMRouter:
     def __init__(self):
         self.prompt_manager = PromptManager()
+        self._handlers = {
+            p: getattr(self, f"_handle_{p.value}")
+            for p in ProviderType
+        }
 
     def route(self, request: QueryRequest) -> dict:
-        """
-        request.provider -> e.g. "openai"
-        request.model    -> e.g. "gpt-4"
-        request.history  -> List[ChatMessage]
-        request.message  -> str
-        """
-        # you can now branch on provider/model if you want:
-        # if request.provider == "openai": ...
-
-        # build the chat prompt
+        handler = self._handlers.get(request.provider)
+        if handler is None:
+            # Should never happen once __init__ guard is in place
+            raise ValueError(f"Unknown provider: {request.provider}")
+        return handler(request)
+    
+    def _handle_openai(self, request: QueryRequest) -> dict:
         prompt = self.prompt_manager.make_chat_prompt(
-            history=[m.dict() for m in request.history],
-            instruction=request.message
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
         )
-
-        # TODO: dispatch to real LLM based on provider & model
+        # ⚙️ insert OpenAI-specific dispatch here
         return {
-            "provider": request.provider,
+            "provider": "open ai was here",
             "model": request.model,
-            "prompt": prompt
+            "prompt": prompt,
+        }
+
+    def _handle_anthropic(self, request: QueryRequest) -> dict:
+        prompt = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        # ⚙️ insert Anthropic-specific dispatch here
+        return {
+            "provider": "claude",
+            "model": request.model,
+            "prompt": prompt,
+        }
+
+    def _handle_gemini(self, request: QueryRequest) -> dict:
+        prompt = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        # ⚙️ insert Gemini-specific dispatch here
+        return {
+            "provider": "gem",
+            "model": request.model,
+            "prompt": prompt,
         }

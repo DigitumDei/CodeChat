@@ -19,7 +19,7 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 # 4) Install pip & Poetry into the venv
 #    Using --no-cache-dir helps keep the layer smaller
-RUN pip install --no-cache-dir pip==25.0.1 poetry==2.1.2
+RUN pip install --no-cache-dir pip==25.0.1 poetry==2.1.2 faiss-cpu==1.8.* tree-sitter==0.24.0 tree_sitter_languages==1.10.2
 
 # 5) Copy your project and build your wheel
 #    Copy only necessary files first for better caching
@@ -29,11 +29,8 @@ COPY daemon ./daemon
 RUN cd daemon && poetry build -f wheel
 
 # 6) Install your wheel + runtime deps into the same venv (/usr/local)
-RUN pip install --no-cache-dir \
-      daemon/dist/*.whl \
-      faiss-cpu==1.8.* \
-      tree-sitter==0.24.0 \
-      tree_sitter_languages==1.10.2
+RUN pip install --no-cache-dir daemon/dist/*.whl
+      
 
 # Now /usr/local contains the full venv with your app installed
 
