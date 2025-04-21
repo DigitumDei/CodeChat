@@ -25,7 +25,7 @@ def config():
 @click.argument("value")
 def set(key: str, value: str):
     """Set CODECHAT config key"""
-    cfg_path = os.path.expanduser("~/config/config.json")
+    cfg_path = os.path.expanduser("/config/config.json")
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
     cfg = {}
     if os.path.exists(cfg_path):

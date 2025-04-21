@@ -1,5 +1,7 @@
 import json
 import os
+
+from fastapi import HTTPException
 from codechat.prompt import PromptManager
 from codechat.models import ProviderType, QueryRequest
 from openai import OpenAI
@@ -15,17 +17,32 @@ class LLMRouter:
             for p in ProviderType
         }
         self.cfg = {}
-        cfg_path = os.path.expanduser("~/config/config.json")
+        cfg_path = os.path.expanduser("/config/config.json")
         if os.path.exists(cfg_path):
             self.cfg = json.load(open(cfg_path))
+        else:
+            print("Warning: No config file found at /config/config.json")
+
 
 
     def route(self, request: QueryRequest) -> dict:
         handler = self._handlers.get(request.provider)
         if handler is None:
             # Should never happen once __init__ guard is in place
-            raise ValueError(f"Unknown provider: {request.provider}")
-        return handler(request)
+            raise HTTPException(status_code=400, detail=f"Unknown provider: {request.provider}")
+        try:
+            return handler(request)
+        except ValueError as ve:
+             # Catch specific ValueErrors you expect (like API key missing)
+             # and convert them to HTTPExceptions
+             print(f"Caught ValueError: {ve}") # Log the original error
+             raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            # Catch unexpected errors and return a 500
+            print(f"Caught unexpected error: {e}") # Log the full error for debugging
+            # Be careful about leaking internal details in the detail message
+            raise HTTPException(status_code=500, detail="An internal server error occurred.")
+
     
     def _handle_openai(self, request: QueryRequest) -> dict:
         prompt = self.prompt_manager.make_chat_prompt(
