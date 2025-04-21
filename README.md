@@ -8,17 +8,16 @@ flowchart TB
       direction TB
       A["Chat panel, inline autocomplete, quick‑fix actions"]
     end
-    subgraph Daemon["Code Chat Daemon (CLI‑or‑Docker image)"]
+    subgraph Daemon["Code&nbsp;Chat&nbsp;Daemon&nbsp;(CLI‑or‑Docker&nbsp;image)"]
       direction TB
       B[Indexer / Watcher]
       C[Vector‑DB + Dep‑graph]
       D[LLM Router / Prompting]
     end
-    subgraph Backends["Pluggable LLM back‑ends & tool runners"]
+    subgraph Backends["Pluggable&nbsp;LLM&nbsp;back‑ends&nbsp;&&nbsp;tool&nbsp;runners"]
       direction TB
-      E["OpenAI, Anthropic, Ollama, LM Studio, or your own containerised model"]
+      E["OpenAI, Anthropic, Google, etc."]
     end
 
-    VSCodeUI -- "JSON‑RPC / WebSocket" --> Daemon
-    Daemon -- "REST / gRPC (future: language‑server‑style protocol)" --> Backends
-```
+    VSCodeUI -- "HTTP / REST (JSON)" --> Daemon
+    Daemon -- "HTTP / REST (JSON)" --> Backends
