@@ -50,7 +50,14 @@ services:
   codechat:
     image: $image
     volumes:
-      - ../:/workspace
+      - type: bind
+        source: ../
+        target: /workspace
+        read_only: true
+      - type: bind
+        source: ./
+        target: /config
+        read_only: false
     ports:
       - "16005:16005"
 "@ | Set-Content -Path $composePath
@@ -62,7 +69,7 @@ if (-not (Test-Path $configDir)) {
     New-Item -ItemType Directory -Path $configDir | Out-Null
 }
 @"
-docker-compose -f .codechat/docker-compose.yml up --build
+docker-compose -f .codechat/docker-compose.yml up --build -d
 "@ | Set-Content -Path $helperPath
 Write-Host "✅ Added helper script at $helperPath"
 
