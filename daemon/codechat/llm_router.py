@@ -71,9 +71,7 @@ class LLMRouter:
         )
         # ⚙️ insert Anthropic-specific dispatch here
         return {
-            "provider": "claude",
-            "model": request.model,
-            "prompt": prompt,
+            "response": "Anthropic Not Implemented"
         }
 
     def _handle_gemini(self, request: QueryRequest) -> dict:
@@ -84,7 +82,5 @@ class LLMRouter:
         )
         # ⚙️ insert Gemini-specific dispatch here
         return {
-            "provider": "gem",
-            "model": request.model,
-            "prompt": prompt,
+            "response": "Gemini not Implemented"
         }

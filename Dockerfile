@@ -2,6 +2,7 @@ ARG baseImage=python:3.12-slim
 # ---------- builder ----------
 FROM ${baseImage} AS builder
 
+RUN --mount=type=cache,target=/root/.cache/pip
 # 1) Install build deps
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -19,18 +20,19 @@ ENV PATH="/usr/local/bin:${PATH}"
 
 # 4) Install pip & Poetry into the venv
 #    Using --no-cache-dir helps keep the layer smaller
-RUN pip install pip==25.0.1 poetry==2.1.2
+RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
+    pip install pip==25.0.1 poetry==2.1.2
 
 # 5) Copy your project and build your wheel
 #    Copy only necessary files first for better caching
 COPY daemon/pyproject.toml daemon/poetry.lock ./
 COPY daemon ./daemon
-#    Build the wheel inside the daemon directory
-RUN cd daemon && poetry build -f wheel
 
-# 6) Install your wheel + runtime deps into the same venv (/usr/local)
-RUN pip install daemon/dist/*.whl
-      
+RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip bash -euxc "\
+      cd daemon \
+   && poetry build -f wheel -o /app/dist \
+   && pip install /app/dist/*.whl \
+"
 
 # Now /usr/local contains the full venv with your app installed
 
