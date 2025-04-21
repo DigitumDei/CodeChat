@@ -2,45 +2,22 @@
 Integrate multi LLM with your code locally, and integrate that with CLI and VS Code
 
 # High-level Architecture
+```mermaid
+flowchart TB
+    subgraph VSCodeUI["VS Code UI"]
+      direction TB
+      A["Chat panel, inline autocomplete, quick‑fix actions"]
+    end
+    subgraph Daemon["Code&nbsp;Chat&nbsp;Daemon&nbsp;(CLI‑or‑Docker&nbsp;image)"]
+      direction TB
+      B[Indexer / Watcher]
+      C[Vector‑DB + Dep‑graph]
+      D[LLM Router / Prompting]
+    end
+    subgraph Backends["Pluggable&nbsp;LLM&nbsp;back‑ends&nbsp;&&nbsp;tool&nbsp;runners"]
+      direction TB
+      E["OpenAI, Anthropic, Google, etc."]
+    end
 
-┌───────────────────────────┐
-│        VS Code UI         │  (chat panel, inline autocomplete,
-│  Code Chat extension      │   quick‑fix actions)               │
-└────────────┬──────────────┘
-             │ JSON‑RPC / WebSocket
-┌────────────▼──────────────┐
-│      Code Chat Daemon     │   ← runs locally, started either
-│  (CLI ‑or‑ Docker image)  │      by `codechat` CLI *or* the
-│                           │      VS Code extension
-│  ▸ Indexer / Watcher      │
-│  ▸ Vector‑DB + Dep‑graph  │
-│  ▸ LLM Router / Prompting │
-└────────────┬──────────────┘
-             │ REST / gRPC (future: language‑server‑style protocol)
-┌────────────▼──────────────┐
-│  pluggable LLM back‑ends  │  (OpenAI, Anthropic, Ollama, LM Studio,
-│  & tool runners           │   or your own containerised model)      │
-└───────────────────────────┘
-
-
-# Folder Layout
-.
-│   .dockerignore
-│   Dockerfile
-│   LICENSE
-│   README.md
-│
-├───.github
-│   └───workflows
-├───daemon
-│   │   poetry.lock
-│   │   pyproject.toml
-│   │
-│   └───codechat
-│           __init__.py
-│
-├───scripts
-│       dev‑alias.sh
-│       doctor.sh
-│
-└───vscode-extension
+    VSCodeUI -- "HTTP / REST (JSON)" --> Daemon
+    Daemon -- "HTTP / REST (JSON)" --> Backends

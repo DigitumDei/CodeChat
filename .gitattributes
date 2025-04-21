@@ -1,0 +1,14 @@
+# Set default behavior, in case users don't have core.autocrlf set.
+* text=auto
+
+# Explicitly declare text files you want to always normalize and convert to LF
+*.md      text eol=lf
+*.py      text eol=lf
+*.json    text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.sh      text eol=lf
+.dockerignore text eol=lf
+Dockerfile    text eol=lf
+.gitattributes text eol=lf
+# Add other text file extensions as needed
