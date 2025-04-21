@@ -22,26 +22,3 @@ flowchart TB
     VSCodeUI -- "JSON‑RPC / WebSocket" --> Daemon
     Daemon -- "REST / gRPC (future: language‑server‑style protocol)" --> Backends
 ```
-```
-# Folder Layout
-.
-│   .dockerignore
-│   Dockerfile
-│   LICENSE
-│   README.md
-│
-├───.github
-│   └───workflows
-├───daemon
-│   │   poetry.lock
-│   │   pyproject.toml
-│   │
-│   └───codechat
-│           __init__.py
-│
-├───scripts
-│       dev‑alias.sh
-│       doctor.sh
-│
-└───vscode-extension
-```
