@@ -2,7 +2,7 @@ POST  http://localhost:16005/query
 Content-Type: application/json
 
 {
-    "provider":"anthropic", 
+    "provider":"gemini", 
     "model":"gpt-4o", 
     "history":[{
         "role":"user",

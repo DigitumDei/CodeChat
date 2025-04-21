@@ -28,7 +28,7 @@ class PromptManager:
         # identical to your old make_chat_prompt
         msgs = []
         if self.system_prompt:
-            msgs.append({"role": "system", "content": "openAI" + self.system_prompt})
+            msgs.append({"role": "developer", "content": "openAI" + self.system_prompt})
         msgs.extend(history)
         msgs.append({"role": "user", "content": instruction})
         return msgs

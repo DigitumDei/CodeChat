@@ -51,7 +51,14 @@ services:
   codechat:
     image: $IMAGE
     volumes:
-      - ../:/workspace
+      - type: bind
+        source: ../
+        target: /workspace
+        read_only: true
+      - type: bind
+        source: ./
+        target: /config
+        read_only: false
     ports:
       - "16005:16005"
 EOF
@@ -61,7 +68,7 @@ echo "✅ Generated $COMPOSE_PATH"
 HELPER_PATH="$CONFIG_DIR/codechat.sh"
 cat > "$HELPER_PATH" <<'EOF'
 #!/usr/bin/env bash
-docker-compose -f .codechat/docker-compose.yml up --build
+docker-compose -f .codechat/docker-compose.yml up --build -d
 EOF
 chmod +x "$HELPER_PATH"
 echo "✅ Added helper script at $HELPER_PATH"
