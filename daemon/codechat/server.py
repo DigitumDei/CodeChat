@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from codechat.indexer import Indexer
 from codechat.watcher import Watcher
 from codechat.llm_router import LLMRouter
+from codechat.models import QueryRequest
 
 app = FastAPI(title="CodeChat Daemon")
 
@@ -22,9 +23,9 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/query")
-def handle_query(payload: dict):
+def handle_query(request: QueryRequest):
     # route to appropriate LLM backend
-    return router.route(payload)
+    return router.route(request)
 
 
 def serve(host: str = '127.0.0.1', port: int = 5005):

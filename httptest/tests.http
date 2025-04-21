@@ -1,0 +1,12 @@
+POST  http://localhost:16005/query
+Content-Type: application/json
+
+{
+    "provider":"openai", 
+    "model":"gpt-4", 
+    "history":[{
+        "role":"user",
+        "content":"Hello"
+    }], 
+    "message":"How are you?"
+}
