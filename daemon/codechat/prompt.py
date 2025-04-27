@@ -1,4 +1,5 @@
 from typing import List
+from google.genai import types
 
 from codechat.models import ChatMessage, ProviderType
 
@@ -12,13 +13,16 @@ class PromptManager:
             for p in ProviderType
         }
 
-    def make_chat_prompt(self, history: List[ChatMessage], instruction: str, provider: ProviderType) -> list[dict]:
+    def make_chat_prompt(self, history: List[ChatMessage], instruction: str, provider: ProviderType):
         """Route to the provider‐specific formatter."""
         fmt = self._formatters.get(provider)
         if not fmt:
             # Should never happen thanks to __init__ guard
             raise ValueError(f"No prompt formatter for provider '{provider}'")
         return fmt(history, instruction)
+    
+    def get_system_prompt(self) -> str:
+        return self.system_prompt
     
     def _format_openai(
         self,
@@ -52,11 +56,23 @@ class PromptManager:
         self,
         history: List[ChatMessage],
         instruction: str
-    ) -> list[dict]:
-        # Gemini might need a different message shape or metadata
+    ) -> list[types.Content]:
+        # Gemini will only take in chat history and return it. No system prompt included.
         msgs = []
-        if self.system_prompt:
-            msgs.append({"role": "system", "content": "gemini" + self.system_prompt})
-        msgs.extend(history)
-        msgs.append({"role": "user", "content": instruction})
+        for message in history:
+            if message.role == "user":
+                msgs.append(types.Content(parts=[types.Part(text=message.content)], role="user"))
+            elif message.role == "assistant":
+                msgs.append(types.Content(parts=[types.Part(text=message.content)], role="model"))
+
         return msgs
+    
+    def _format_azure(
+        self,
+        history: List[ChatMessage],
+        instruction: str
+    ) -> list[dict]:
+        return self._format_openai(
+            history,
+            instruction
+        )

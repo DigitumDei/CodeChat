@@ -17,12 +17,14 @@ class LLMRouter:
             for p in ProviderType
         }
         self.cfg = {}
+        self.set_config()
+
+    def set_config(self):
         cfg_path = os.path.expanduser("/config/config.json")
         if os.path.exists(cfg_path):
             self.cfg = json.load(open(cfg_path))
         else:
             print("Warning: No config file found at /config/config.json")
-
 
 
     def route(self, request: QueryRequest) -> dict:
@@ -75,12 +77,39 @@ class LLMRouter:
         }
 
     def _handle_gemini(self, request: QueryRequest) -> dict:
+        
+        if not self.cfg.get("gemini.key"):
+            raise ValueError("Gemini key not found in config, call codechat config set gemini.key sk-…")
+
+        client = genai.Client(api_key=self.cfg.get("gemini.key"))
+
+        history = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        config = types.GenerateContentConfig(system_instruction=self.prompt_manager.get_system_prompt())
+        chat = client.chats.create(model="gemini-2.0-flash", history=history, config=config)
+
+        response = chat.send_message(request.message)
+        
+        return response
+    
+    def _handle_azure(self, request: QueryRequest) -> dict:
         prompt = self.prompt_manager.make_chat_prompt(
             history=request.history,
             instruction=request.message,
             provider=request.provider
         )
-        # ⚙️ insert Gemini-specific dispatch here
-        return {
-            "response": "Gemini not Implemented"
-        }
+        
+        #if cfg.get("openai.key") doesn't exist throw an error
+        if not self.cfg.get("azureopenai.key"):
+            raise ValueError("Azure OpenAI key not found in config, call codechat config set azureopenai.key sk-…")
+        
+        client = OpenAI(api_key=self.cfg.get("azureopenai.key"))
+
+        response = client.responses.create(
+            model="gpt-4.1",
+            input=prompt)
+        
+        return response

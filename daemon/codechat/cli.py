@@ -1,6 +1,7 @@
 import json
 import os
 import click
+import requests
 from codechat.server import serve
 
 @click.group()
@@ -29,12 +30,23 @@ def set(key: str, value: str):
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
     cfg = {}
     if os.path.exists(cfg_path):
+        click.echo(f"opening {cfg_path}.")
         with open(cfg_path, "r") as f:
             cfg = json.load(f)
     cfg[key] = value
     with open(cfg_path, "w") as f:
+        click.echo(f"writing {cfg_path}.")
         json.dump(cfg, f, indent=2)
     click.echo(f"Set {key}.")
+    try:
+        server_url = "http://localhost:16005/admin/reload-config"
+        response = requests.post(server_url, timeout=5) # Add a timeout
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        print("Successfully signaled server to reload configuration.")
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: Could not signal the running server to reload config: {e}")
+        print("The configuration file was updated, but you may need to restart the server manually.")
+
 
 if __name__ == '__main__':
     main()
