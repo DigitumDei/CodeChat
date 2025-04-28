@@ -26,3 +26,7 @@ flowchart TB
 # Local Build and Install
 
 See [docs/InstallingRunCodeChat.md](docs/InstallingRunCodeChat.md)
+
+# VS Code Extension
+
+See [docs/VS-Code-Extension.md](docs/VS-Code-Extension.md)

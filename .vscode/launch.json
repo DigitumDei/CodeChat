@@ -1,0 +1,29 @@
+	{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Run Extension in Dev Host",
+			"type": "extensionHost",
+			"request": "launch",
+			"preLaunchTask": "tsc: watch - tsconfig.json",
+			"runtimeExecutable": "${execPath}", // launches your local VS Code
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}/vscode-extension/CodeChat"
+			],
+			"outFiles": [
+				"${workspaceFolder}/vscode-extension/CodeChat/out/**/*.js"
+			]
+		},
+		{
+			"name": "Debug Jest Tests",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/vscode-extension/CodeChat/node_modules/jest/bin/jest.js",
+			"args": [
+				"--runInBand"
+			],
+			"cwd": "${workspaceFolder}/vscode-extension/CodeChat",
+			"console": "integratedTerminal"
+		}
+	]
+	}
