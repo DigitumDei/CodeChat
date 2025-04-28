@@ -15,6 +15,15 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"label": "tsc: watch - tsconfig.json",
+			"type": "shell",
+			"command": "npm run watch",
+			"problemMatcher": [
+				"$tsc-watch"
+			],
+			"isBackground": true
 		}
 	]
 }

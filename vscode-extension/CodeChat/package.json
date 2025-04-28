@@ -1,6 +1,6 @@
 {
-  "name": "CodeChat",
-  "displayName": "codechat",
+  "name": "codechat",
+  "displayName": "Code Chat",
   "description": "Local-first AI assistant for your code",
   "version": "0.0.1",
   "engines": {
@@ -10,17 +10,33 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished"    
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "codechat.openSettings",
+        "title": "CodeChat: Open Daemon URL Settings"
+      },
+      {
         "command": "codechat.helloWorld",
         "title": "Hello World"
+      }      
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "CodeChat",
+      "properties": {
+        "codechat.daemonUrl": {
+          "type": "string",
+          "default": "http://localhost:16005",
+          "description": "URL of your running CodeChat daemon"
+        }
       }
-    ]
+    }
   },
+  
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
