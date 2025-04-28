@@ -34,6 +34,16 @@
           "description": "URL of your running CodeChat daemon"
         }
       }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "codechat.chat",
+          "type": "webview",
+          "name": "CodeChat Chat",
+          "icon": "chat"
+        }
+      ]
     }
   },
   
