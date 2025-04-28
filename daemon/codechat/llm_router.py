@@ -9,6 +9,9 @@ from anthropic import Anthropic
 from google import genai
 from google.genai import types
 
+import structlog
+logger = structlog.get_logger(__name__)
+
 class LLMRouter:
     def __init__(self):
         self.prompt_manager = PromptManager()
@@ -24,7 +27,7 @@ class LLMRouter:
         if os.path.exists(cfg_path):
             self.cfg = json.load(open(cfg_path))
         else:
-            print("Warning: No config file found at /config/config.json")
+            logger.warning("No config file found at /config/config.json")
 
 
     def route(self, request: QueryRequest) -> dict:
@@ -37,11 +40,11 @@ class LLMRouter:
         except ValueError as ve:
              # Catch specific ValueErrors you expect (like API key missing)
              # and convert them to HTTPExceptions
-             print(f"Caught ValueError: {ve}") # Log the original error
+             logger.error(f"Caught ValueError", exception=str(ve)) # Log the original error
              raise HTTPException(status_code=400, detail=str(ve))
         except Exception as e:
             # Catch unexpected errors and return a 500
-            print(f"Caught unexpected error: {e}") # Log the full error for debugging
+            logger.error("Caught unexpected error", exception=str(e)) # Log the full error for debugging
             # Be careful about leaking internal details in the detail message
             raise HTTPException(status_code=500, detail="An internal server error occurred.")
 
@@ -55,6 +58,7 @@ class LLMRouter:
         
         #if cfg.get("openai.key") doesn't exist throw an error
         if not self.cfg.get("openai.key"):
+            logger.warning("OpenAI API key not found in config")
             raise ValueError("OpenAI API key not found in config, call codechat config set openai.key sk-…")
 
         client = OpenAI(api_key=self.cfg.get("openai.key"))
@@ -67,6 +71,7 @@ class LLMRouter:
 
     def _handle_anthropic(self, request: QueryRequest) -> dict:        
         if not self.cfg.get("anthropic.key"):
+            logger.warning("Anthropic API key not found in config")
             raise ValueError("Anthropic API key not found in config, call codechat config set anthropic.key sk-…")
 
         client = Anthropic(api_key=self.cfg.get("anthropic.key"))
@@ -87,6 +92,7 @@ class LLMRouter:
     def _handle_google(self, request: QueryRequest) -> dict:
         
         if not self.cfg.get("gemini.key"):
+            logger.warning("Google Gemini API key not found in config")
             raise ValueError("Google Gemini API key not found in config, call codechat config set gemini.key sk-…")
 
         client = genai.Client(api_key=self.cfg.get("gemini.key"))
@@ -115,6 +121,7 @@ class LLMRouter:
         
         #if cfg.get("openai.key") doesn't exist throw an error
         if not self.cfg.get("azureopenai.key"):
+            logger.warning("Azure OpenAI key not found in config")
             raise ValueError("Azure OpenAI key not found in config, call codechat config set azureopenai.key sk-…")
         
         client = OpenAI(api_key=self.cfg.get("azureopenai.key"))

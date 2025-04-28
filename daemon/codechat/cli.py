@@ -3,6 +3,8 @@ import os
 import click
 import requests
 from codechat.server import serve
+import structlog
+logger = structlog.get_logger(__name__)
 
 @click.group()
 def main():
@@ -42,10 +44,10 @@ def set(key: str, value: str):
         server_url = "http://localhost:16005/admin/reload-config"
         response = requests.post(server_url, timeout=5) # Add a timeout
         response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-        print("Successfully signaled server to reload configuration.")
+        logger.info("Successfully signaled server to reload configuration.")
     except requests.exceptions.RequestException as e:
-        print(f"Warning: Could not signal the running server to reload config: {e}")
-        print("The configuration file was updated, but you may need to restart the server manually.")
+        logger.info(f"Warning: Could not signal the running server to reload config: {e}")
+        logger.info("The configuration file was updated, but you may need to restart the server manually.")
 
 
 if __name__ == '__main__':

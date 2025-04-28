@@ -2,6 +2,8 @@ from typing import List
 from google.genai import types
 
 from codechat.models import ChatMessage, ProviderType
+import structlog 
+logger = structlog.get_logger(__name__)
 
 
 class PromptManager:
@@ -17,7 +19,7 @@ class PromptManager:
         """Route to the provider‐specific formatter."""
         fmt = self._formatters.get(provider)
         if not fmt:
-            # Should never happen thanks to __init__ guard
+            logger.error(f"No prompt formatter for provider '{provider}'")            
             raise ValueError(f"No prompt formatter for provider '{provider}'")
         return fmt(history, instruction)
     

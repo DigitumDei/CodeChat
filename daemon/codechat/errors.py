@@ -26,9 +26,16 @@ def add_global_error_handlers(app):
 
     @app.exception_handler(RequestValidationError)
     async def validation_exc_handler(request: Request, exc: RequestValidationError):
-        logger.warning("Validation error", errors=exc.errors())
+        raw_errors = exc.errors()
+        logger.warning("Validation error", errors=raw_errors)
+        formatted_errors = []
+        for error in raw_errors:
+            field = ".".join(map(str, error.get('loc', []))) # Join location path
+            message = error.get('msg', 'Unknown error')
+            formatted_errors.append(f"Field '{field}': {message}")
+        error_message = "; ".join(formatted_errors)
         envelope = ErrorEnvelope(
-            error=ErrorDetail(code="VALIDATION_ERR", msg="Invalid request payload")
+            error=ErrorDetail(code="VALIDATION_ERR", msg=error_message)
         )
         return JSONResponse(status_code=422, content=envelope.dict())
 
