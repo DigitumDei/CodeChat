@@ -3,8 +3,13 @@ from codechat.indexer import Indexer
 from codechat.watcher import Watcher
 from codechat.llm_router import LLMRouter
 from codechat.models import QueryRequest
+from codechat.errors import add_global_error_handlers
 
 app = FastAPI(title="CodeChat Daemon")
+
+# install our unified handlers before anything else
+add_global_error_handlers(app)
+
 
 # instantiate core components
 indexer = Indexer()
