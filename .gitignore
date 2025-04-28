@@ -8,3 +8,5 @@
 # VS Code extension
 vscode-extension/CodeChat/node_modules/
 vscode-extension/CodeChat/out/
+
+*.vsix
