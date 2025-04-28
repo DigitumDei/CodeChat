@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 class ProviderType(str, Enum):
     OPENAI    = "openai"
     ANTHROPIC = "anthropic"
-    GEMINI    = "gemini"
+    GOOGLE    = "google"
     AZURE     = "azure"
 
 class ChatMessage(BaseModel):

@@ -55,19 +55,19 @@ class LLMRouter:
         
         #if cfg.get("openai.key") doesn't exist throw an error
         if not self.cfg.get("openai.key"):
-            raise ValueError("OpenAI key not found in config, call codechat config set openai.key sk-…")
+            raise ValueError("OpenAI API key not found in config, call codechat config set openai.key sk-…")
 
         client = OpenAI(api_key=self.cfg.get("openai.key"))
 
         response = client.responses.create(
-            model="gpt-4.1",
+            model=request.model,
             input=prompt)
         
         return response
 
     def _handle_anthropic(self, request: QueryRequest) -> dict:        
         if not self.cfg.get("anthropic.key"):
-            raise ValueError("Anthropic key not found in config, call codechat config set anthropic.key sk-…")
+            raise ValueError("Anthropic API key not found in config, call codechat config set anthropic.key sk-…")
 
         client = Anthropic(api_key=self.cfg.get("anthropic.key"))
 
@@ -77,17 +77,17 @@ class LLMRouter:
             provider=request.provider
         )
         response = client.messages.create(
-            model="claude-3-7-sonnet-20250219",
+            model=request.model,
             system=self.prompt_manager.get_system_prompt(),
             max_tokens=1024, #we should add this to the base request model
             messages=prompt
         )
         return response
 
-    def _handle_gemini(self, request: QueryRequest) -> dict:
+    def _handle_google(self, request: QueryRequest) -> dict:
         
         if not self.cfg.get("gemini.key"):
-            raise ValueError("Gemini key not found in config, call codechat config set gemini.key sk-…")
+            raise ValueError("Google Gemini API key not found in config, call codechat config set gemini.key sk-…")
 
         client = genai.Client(api_key=self.cfg.get("gemini.key"))
 
@@ -97,7 +97,10 @@ class LLMRouter:
             provider=request.provider
         )
         config = types.GenerateContentConfig(system_instruction=self.prompt_manager.get_system_prompt())
-        chat = client.chats.create(model="gemini-2.0-flash", history=history, config=config)
+        chat = client.chats.create(
+            model=request.model, 
+            history=history, 
+            config=config)
 
         response = chat.send_message(request.message)
         

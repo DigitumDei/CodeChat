@@ -47,7 +47,7 @@ class PromptManager:
         msgs.append({"role": "user", "content": instruction})
         return msgs
 
-    def _format_gemini(
+    def _format_google(
         self,
         history: List[ChatMessage],
         instruction: str
