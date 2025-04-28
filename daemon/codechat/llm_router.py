@@ -17,12 +17,14 @@ class LLMRouter:
             for p in ProviderType
         }
         self.cfg = {}
+        self.set_config()
+
+    def set_config(self):
         cfg_path = os.path.expanduser("/config/config.json")
         if os.path.exists(cfg_path):
             self.cfg = json.load(open(cfg_path))
         else:
             print("Warning: No config file found at /config/config.json")
-
 
 
     def route(self, request: QueryRequest) -> dict:
@@ -53,38 +55,72 @@ class LLMRouter:
         
         #if cfg.get("openai.key") doesn't exist throw an error
         if not self.cfg.get("openai.key"):
-            raise ValueError("OpenAI key not found in config, call codechat config set openai.key sk-…")
+            raise ValueError("OpenAI API key not found in config, call codechat config set openai.key sk-…")
 
         client = OpenAI(api_key=self.cfg.get("openai.key"))
+
+        response = client.responses.create(
+            model=request.model,
+            input=prompt)
+        
+        return response
+
+    def _handle_anthropic(self, request: QueryRequest) -> dict:        
+        if not self.cfg.get("anthropic.key"):
+            raise ValueError("Anthropic API key not found in config, call codechat config set anthropic.key sk-…")
+
+        client = Anthropic(api_key=self.cfg.get("anthropic.key"))
+
+        prompt = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        response = client.messages.create(
+            model=request.model,
+            system=self.prompt_manager.get_system_prompt(),
+            max_tokens=1024, #we should add this to the base request model
+            messages=prompt
+        )
+        return response
+
+    def _handle_google(self, request: QueryRequest) -> dict:
+        
+        if not self.cfg.get("gemini.key"):
+            raise ValueError("Google Gemini API key not found in config, call codechat config set gemini.key sk-…")
+
+        client = genai.Client(api_key=self.cfg.get("gemini.key"))
+
+        history = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        config = types.GenerateContentConfig(system_instruction=self.prompt_manager.get_system_prompt())
+        chat = client.chats.create(
+            model=request.model, 
+            history=history, 
+            config=config)
+
+        response = chat.send_message(request.message)
+        
+        return response
+    
+    def _handle_azure(self, request: QueryRequest) -> dict:
+        prompt = self.prompt_manager.make_chat_prompt(
+            history=request.history,
+            instruction=request.message,
+            provider=request.provider
+        )
+        
+        #if cfg.get("openai.key") doesn't exist throw an error
+        if not self.cfg.get("azureopenai.key"):
+            raise ValueError("Azure OpenAI key not found in config, call codechat config set azureopenai.key sk-…")
+        
+        client = OpenAI(api_key=self.cfg.get("azureopenai.key"))
 
         response = client.responses.create(
             model="gpt-4.1",
             input=prompt)
         
         return response
-
-    def _handle_anthropic(self, request: QueryRequest) -> dict:
-        prompt = self.prompt_manager.make_chat_prompt(
-            history=request.history,
-            instruction=request.message,
-            provider=request.provider
-        )
-        # ⚙️ insert Anthropic-specific dispatch here
-        return {
-            "provider": "claude",
-            "model": request.model,
-            "prompt": prompt,
-        }
-
-    def _handle_gemini(self, request: QueryRequest) -> dict:
-        prompt = self.prompt_manager.make_chat_prompt(
-            history=request.history,
-            instruction=request.message,
-            provider=request.provider
-        )
-        # ⚙️ insert Gemini-specific dispatch here
-        return {
-            "provider": "gem",
-            "model": request.model,
-            "prompt": prompt,
-        }

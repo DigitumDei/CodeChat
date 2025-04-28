@@ -21,3 +21,8 @@ flowchart TB
 
     VSCodeUI -- "HTTP / REST (JSON)" --> Daemon
     Daemon -- "HTTP / REST (JSON)" --> Backends
+```
+
+# Local Build and Install
+
+See [docs/InstallingRunCodeChat.md](docs/InstallingRunCodeChat.md)

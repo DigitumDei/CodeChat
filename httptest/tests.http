@@ -1,18 +1,35 @@
+# define the models to be used for various tests
+
+# openai
+@gptprovider="openai"
+@gpt-4o="gpt-4o"
+@gpt-o4-mini="o4-mini"
+
+# anthropic
+@claudeprovider="anthropic"
+@claude-37="claude-3-7-sonnet-latest"
+@claude-35-haiku="claude-3-5-haiku-latest"
+
+# google
+@geminiprovider="google"
+@gemini-25="gemini-2.5-pro-preview-03-25"
+@gemini-flash-25="gemini-2.5-flash-preview-04-17"
+
 POST  http://localhost:16005/query
 Content-Type: application/json
 
 {
-    "provider":"openai", 
-    "model":"gpt-4o", 
+    "provider":{{gptprovider}}, 
+    "model":{{gpt-o4-mini}}, 
     "history":[{
         "role":"user",
-        "content":"Hello"
+        "content":"Hello, my name is Dion, I'm trying to test you memory."
     },
     {   
         "role": "assistant",
         "content": "Hello, my name is Code Chat, how may I help?"
     }], 
-    "message":"How are you?"
+    "message":"What is my name and what am I doing? What are you tasked with?"
 }
 
 

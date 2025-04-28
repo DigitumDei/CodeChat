@@ -3,9 +3,10 @@ from typing import List, Literal, Tuple, TypeAlias
 from pydantic import BaseModel, Field
 
 class ProviderType(str, Enum):
-    OPENAI   = "openai"
+    OPENAI    = "openai"
     ANTHROPIC = "anthropic"
-    GEMINI   = "gemini"
+    GOOGLE    = "google"
+    AZURE     = "azure"
 
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"] = Field(
