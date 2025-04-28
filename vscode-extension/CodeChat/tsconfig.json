@@ -1,0 +1,26 @@
+// h:\SourceCode\CodeChat\vscode-extension\CodeChat\tsconfig.json
+{
+	"compilerOptions": {
+		"skipLibCheck": true,
+		"module": "Node16",
+		"target": "ES2022",
+		"outDir": "out",
+		"lib": [
+			"ES2022"
+		],
+		"sourceMap": true,
+		"rootDir": "src",
+		"strict": true,
+        "types": ["node", "jest"] // <--- Add/modify this line
+		/* Additional Checks */
+		// "noImplicitReturns": true,
+		// "noFallthroughCasesInSwitch": true,
+		// "noUnusedParameters": true,
+	},
+    "include": [ // Optional: Explicitly include your source files
+        "src/**/*"
+    ],
+    "exclude": [ // Optional: Ensure node_modules is excluded if not already
+        "node_modules"
+    ]
+}
