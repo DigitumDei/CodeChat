@@ -33,3 +33,11 @@ Content-Type: application/json
 }
 
 
+### Bad JSON → 422 with VALIDATION_ERR
+POST http://localhost:16005/query
+Content-Type: application/json
+
+{ this is not valid json }
+
+### Health endpoint still works
+GET http://localhost:16005/health
