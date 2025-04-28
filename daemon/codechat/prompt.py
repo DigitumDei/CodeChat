@@ -42,12 +42,7 @@ class PromptManager:
         history: List[ChatMessage],
         instruction: str
     ) -> list[dict]:
-        # e.g. Anthropics usually want "user"/"assistant" roles,
-        # could tweak system prompt placement, etc.
         msgs = []
-        if self.system_prompt:
-            # Anthropics often handle system prompts differently
-            msgs.append({"role": "system", "content": "anthropic" + self.system_prompt})
         msgs.extend(history)
         msgs.append({"role": "user", "content": instruction})
         return msgs

@@ -65,16 +65,24 @@ class LLMRouter:
         
         return response
 
-    def _handle_anthropic(self, request: QueryRequest) -> dict:
+    def _handle_anthropic(self, request: QueryRequest) -> dict:        
+        if not self.cfg.get("anthropic.key"):
+            raise ValueError("Anthropic key not found in config, call codechat config set anthropic.key sk-…")
+
+        client = Anthropic(api_key=self.cfg.get("anthropic.key"))
+
         prompt = self.prompt_manager.make_chat_prompt(
             history=request.history,
             instruction=request.message,
             provider=request.provider
         )
-        # ⚙️ insert Anthropic-specific dispatch here
-        return {
-            "response": "Anthropic Not Implemented"
-        }
+        response = client.messages.create(
+            model="claude-3-7-sonnet-20250219",
+            system=self.prompt_manager.get_system_prompt(),
+            max_tokens=1024, #we should add this to the base request model
+            messages=prompt
+        )
+        return response
 
     def _handle_gemini(self, request: QueryRequest) -> dict:
         
