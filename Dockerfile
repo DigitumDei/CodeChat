@@ -25,8 +25,8 @@ RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
 
 # 5) Copy your project and build your wheel
 #    Copy only necessary files first for better caching
-COPY daemon/pyproject.toml daemon/poetry.lock ./
-COPY daemon ./daemon
+COPY daemon/pyproject.toml daemon/poetry.lock ./daemon/
+COPY daemon/codechat ./daemon/codechat
 
 RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip bash -euxc "\
       cd daemon \
@@ -35,9 +35,21 @@ RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip bash -euxc "\
 "
 
 # Now /usr/local contains the full venv with your app installed
+# ---------- test ----------
+FROM builder AS test
 
+# 1) bring in the rest of the source so that pytest has access to tests/
+COPY daemon/tests ./daemon/tests 
+
+# 2) install dev / test deps **inside the existing venv**
+RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
+    pip install pytest==7.4.* pytest-mock==3.14.* pytest-watch==4.* coverage==7.*
+
+# 3) default command – run the whole test-suite
+CMD ["pytest", "-q"]
+    
 # ---------- runtime ----------
-FROM ${baseImage} AS runtime
+FROM ${baseImage} AS prod
 
 # Copy the entire populated venv from the builder
 COPY --from=builder /usr/local /usr/local

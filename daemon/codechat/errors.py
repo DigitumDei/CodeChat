@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import traceback
-import structlog  # we’ll replace prints later
+import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -18,11 +18,11 @@ class ErrorEnvelope(BaseModel):
 def add_global_error_handlers(app):
     @app.exception_handler(HTTPException)
     async def http_exc_handler(request: Request, exc: HTTPException):
-        # Use exc.detail or map to a code if you have enums
+        logger.error("HTTP error", exc_info=exc)
         envelope = ErrorEnvelope(
             error=ErrorDetail(code=getattr(exc, "code", "HTTP_ERROR"), msg=str(exc.detail))
         )
-        return JSONResponse(status_code=exc.status_code, content=envelope.dict())
+        return JSONResponse(status_code=exc.status_code, content=envelope.model_dump())
 
     @app.exception_handler(RequestValidationError)
     async def validation_exc_handler(request: Request, exc: RequestValidationError):
@@ -37,7 +37,7 @@ def add_global_error_handlers(app):
         envelope = ErrorEnvelope(
             error=ErrorDetail(code="VALIDATION_ERR", msg=error_message)
         )
-        return JSONResponse(status_code=422, content=envelope.dict())
+        return JSONResponse(status_code=422, content=envelope.model_dump())
 
     @app.exception_handler(Exception)
     async def generic_exc_handler(request: Request, exc: Exception):
@@ -46,4 +46,4 @@ def add_global_error_handlers(app):
         envelope = ErrorEnvelope(
             error=ErrorDetail(code="UNEXPECTED_ERR", msg="An internal server error occurred")
         )
-        return JSONResponse(status_code=500, content=envelope.dict())
+        return JSONResponse(status_code=500, content=envelope.model_dump())

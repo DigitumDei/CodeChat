@@ -4,7 +4,7 @@ import os
 from fastapi import HTTPException
 from codechat.prompt import PromptManager
 from codechat.models import ProviderType, QueryRequest
-from openai import OpenAI
+from openai import OpenAI, APIStatusError as OpenAIAPIStatusError
 from anthropic import Anthropic
 from google import genai
 from google.genai import types
@@ -42,6 +42,22 @@ class LLMRouter:
              # and convert them to HTTPExceptions
              logger.error(f"Caught ValueError", exception=str(ve)) # Log the original error
              raise HTTPException(status_code=400, detail=str(ve))
+        except OpenAIAPIStatusError as e:
+            # Handle OpenAI specific API errors (includes 4xx/5xx from their API)
+            status_code = e.status_code
+            detail = f"OpenAI API error: {e.message}" # Use message from OpenAI error
+            logger.error(
+                "OpenAI API error encountered",
+                status_code=status_code,
+                detail=detail,
+                response=e.response.text if e.response else "N/A", # Log raw response if available
+                provider=request.provider,
+                model=request.model,
+                exc_info=True # Add traceback info to log
+            )
+            # Re-raise with the original status code if it's client-side (4xx)
+            # or keep it as 500 if it was a server error on OpenAI's side
+            raise HTTPException(status_code=status_code, detail=detail)
         except Exception as e:
             # Catch unexpected errors and return a 500
             logger.error("Caught unexpected error", exception=str(e)) # Log the full error for debugging
