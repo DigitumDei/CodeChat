@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, '**/topic/**' ]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dev deps
+        run: |
+          pip install poetry
+          poetry install --with dev --no-interaction
+
+      - name: Ruff & MyPy
+        run: |
+          ruff . 
+          mypy codechat
+
+  container-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build test image
+        run: |
+          docker build --target test -t codechat:test .
+
+      - name: Run tests inside container
+        # by default, the test stage CMD is `pytest -q`
+        run: |
+          docker run --rm codechat:test
+
+  build-and-publish:
+    needs: container-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        run: |
+          docker build --target prod -t codechat:latest .
+
+      - name: Push to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        env:
+          REGISTRY: ghcr.io
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login $REGISTRY -u ${{ github.actor }} --password-stdin
+          docker tag codechat:latest $REGISTRY/${{ github.repository_owner }}/codechat:latest
+          docker push $REGISTRY/${{ github.repository_owner }}/codechat:latest
