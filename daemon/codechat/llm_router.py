@@ -83,7 +83,7 @@ class LLMRouter:
             model=request.model,
             input=prompt)
         
-        return response
+        return response.to_dict()
 
     def _handle_anthropic(self, request: QueryRequest) -> dict:        
         if not self.cfg.get("anthropic.key"):
@@ -103,7 +103,7 @@ class LLMRouter:
             max_tokens=1024, #we should add this to the base request model
             messages=prompt
         )
-        return response
+        return response.to_dict()
 
     def _handle_google(self, request: QueryRequest) -> dict:
         
@@ -126,7 +126,7 @@ class LLMRouter:
 
         response = chat.send_message(request.message)
         
-        return response
+        return response.model_dump()
     
     def _handle_azure(self, request: QueryRequest) -> dict:
         prompt = self.prompt_manager.make_chat_prompt(
@@ -146,4 +146,4 @@ class LLMRouter:
             model="gpt-4.1",
             input=prompt)
         
-        return response
+        return response.to_dict()
