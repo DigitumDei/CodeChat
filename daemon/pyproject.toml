@@ -31,6 +31,8 @@ pytest = "^7.4"
 pytest-mock = "^3.14"
 ruff   = "^0.11"
 mypy   = "^1.15"
+types-networkx = "^3.4"
+types-requests = "^2.32"
 
 [build-system]
 requires = ["poetry-core>=1.7.1"]

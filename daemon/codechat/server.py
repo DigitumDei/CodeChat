@@ -29,7 +29,6 @@ async def lifespan(app: FastAPI):
     yield
     # Code to run on shutdown (if any)
     struct_logger.info("Shutting down...")
-    watcher.stop() # Example: Assuming your watcher has a stop method
     struct_logger.info("Filesystem watcher stopped.")
 
 # Create FastAPI app instance *with* the lifespan manager

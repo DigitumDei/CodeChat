@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from google.genai import types
 
 from codechat.models import ChatMessage, ProviderType
@@ -8,7 +8,7 @@ logger = structlog.get_logger(__name__)
 
 class PromptManager:
     """Builds and formats chat prompts for LLMs."""
-    def __init__(self, system_prompt: str = None):
+    def __init__(self, system_prompt: Optional[str] = None):
         self.system_prompt = system_prompt or "You are CodeChat, a helpful assistant for working with code."
         self._formatters = {
             p: getattr(self, f"_format_{p.value}")
