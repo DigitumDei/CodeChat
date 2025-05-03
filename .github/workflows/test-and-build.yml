@@ -31,8 +31,8 @@ jobs:
       - name: Ruff & MyPy
         run: |
           cd daemon
-          ruff . 
-          mypy codechat
+          poetry run ruff . 
+          poetry run mypy codechat
 
   container-test:
     needs: lint
