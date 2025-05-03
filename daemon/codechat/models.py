@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal, Tuple, TypeAlias 
+from typing import List, Literal 
 from pydantic import BaseModel, Field
 
 class ProviderType(str, Enum):

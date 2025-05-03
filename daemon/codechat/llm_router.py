@@ -40,7 +40,7 @@ class LLMRouter:
         except ValueError as ve:
              # Catch specific ValueErrors you expect (like API key missing)
              # and convert them to HTTPExceptions
-             logger.error(f"Caught ValueError", exception=str(ve)) # Log the original error
+             logger.error("Caught ValueError", exception=str(ve)) # Log the original error
              raise HTTPException(status_code=400, detail=str(ve))
         except OpenAIAPIStatusError as e:
             # Handle OpenAI specific API errors (includes 4xx/5xx from their API)
