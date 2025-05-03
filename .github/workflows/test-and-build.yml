@@ -24,11 +24,13 @@ jobs:
 
       - name: Install dev deps
         run: |
+          cd daemon
           pip install poetry
           poetry install --with dev --no-interaction
 
       - name: Ruff & MyPy
         run: |
+          cd daemon
           ruff . 
           mypy codechat
 
