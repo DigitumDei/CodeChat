@@ -31,7 +31,7 @@ jobs:
       - name: Ruff & MyPy
         run: |
           cd daemon
-          poetry run ruff . 
+          poetry run ruff check . 
           poetry run mypy codechat
 
   container-test:
