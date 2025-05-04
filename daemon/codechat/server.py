@@ -1,3 +1,5 @@
+# h:\SourceCode\CodeChat\daemon\codechat\server.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from codechat.indexer import Indexer
 from codechat.watcher import Watcher
@@ -6,31 +8,37 @@ from codechat.models import QueryRequest
 from codechat.errors import add_global_error_handlers
 from codechat.logging import setup_logging, RequestIDMiddleware
 import structlog
+import uvicorn # Import uvicorn here
 
-app = FastAPI(title="CodeChat Daemon")
-
-# install our unified handlers before anything else
-add_global_error_handlers(app)
-
-# ---- structured logging setup ----
-# load config early so we can pass it into setup_logging
-router = LLMRouter()            # router loads cfg in its ctor
-setup_logging(router.cfg)
-app.add_middleware(RequestIDMiddleware)
-
-# instantiate core components
+# instantiate core components early (needed for logging setup and lifespan)
 indexer = Indexer()
 watcher = Watcher(indexer)
+router = LLMRouter() # router loads cfg in its ctor
 
-# background tasks
-@app.on_event("startup")
-def startup_tasks():
-    # start filesystem watcher
+# ---- structured logging setup ----
+setup_logging(router.cfg)
+struct_logger = structlog.get_logger("server.lifespan") # Logger for lifespan events
+
+# ---- Lifespan context manager ----
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Code to run on startup
+    struct_logger.info("Starting up...")
     watcher.start()
-    struct_logger = structlog.get_logger("server.startup")
     struct_logger.info("Filesystem watcher started", path=".")
+    yield
+    # Code to run on shutdown (if any)
+    struct_logger.info("Shutting down...")
+    struct_logger.info("Filesystem watcher stopped.")
 
-# HTTP endpoints (future REST/gRPC)
+# Create FastAPI app instance *with* the lifespan manager
+app = FastAPI(title="CodeChat Daemon", lifespan=lifespan)
+
+# install our unified handlers *after* app creation
+add_global_error_handlers(app)
+app.add_middleware(RequestIDMiddleware)
+
+# ---- HTTP endpoints ----
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -54,17 +62,24 @@ async def reload_config():
         return {"message": "Configuration reloaded successfully"}
     except Exception as e:
         logger.error("Error reloading configuration?", exception=str(e))
+        # Consider returning a proper HTTP error status code here
+        # from fastapi import HTTPException
+        # raise HTTPException(status_code=500, detail=f"Error reloading config: {e}")
+        # For now, keeping the original return structure:
         return {"status" : "error", "message": str(e)}
 
 
-
-def serve(host: str = '127.0.0.1', port: int = 5005):
-    import uvicorn
+# ---- Server execution ----
+def serve(host: str = '127.0.0.1', port: int = 16005): # Corrected default port
     # disable uvicorn’s own access logs in favor of our structured output
     uvicorn.run(
         app,
         host=host,
         port=port,
-        log_config=None,
+        log_config=None, # Keep this to prevent uvicorn's default logging setup
         access_log=False,
     )
+
+# Optional: If you run this file directly (e.g., python codechat/server.py)
+# if __name__ == "__main__":
+#     serve()

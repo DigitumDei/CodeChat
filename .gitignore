@@ -10,3 +10,5 @@ vscode-extension/CodeChat/node_modules/
 vscode-extension/CodeChat/out/
 
 *.vsix
+
+__pycache__/

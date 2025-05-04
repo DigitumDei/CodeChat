@@ -14,9 +14,11 @@ def setup_logging(cfg: dict):
     """
     # determine level: config overrides ENV
     lvl = cfg.get("log.level") or os.getenv("CODECHAT_LOG_LEVEL", "info")
-    level = lvl.upper()
+    if isinstance(lvl, str):
+        level = lvl.upper()
+    else:
+        level = "INFO" 
 
-    # stdlib root logger
     logging.basicConfig(
         format="%(message)s",
         level=getattr(logging, level, logging.INFO),

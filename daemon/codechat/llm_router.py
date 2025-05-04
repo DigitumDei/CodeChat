@@ -4,7 +4,7 @@ import os
 from fastapi import HTTPException
 from codechat.prompt import PromptManager
 from codechat.models import ProviderType, QueryRequest
-from openai import OpenAI
+from openai import OpenAI, APIStatusError as OpenAIAPIStatusError
 from anthropic import Anthropic
 from google import genai
 from google.genai import types
@@ -40,8 +40,24 @@ class LLMRouter:
         except ValueError as ve:
              # Catch specific ValueErrors you expect (like API key missing)
              # and convert them to HTTPExceptions
-             logger.error(f"Caught ValueError", exception=str(ve)) # Log the original error
+             logger.error("Caught ValueError", exception=str(ve)) # Log the original error
              raise HTTPException(status_code=400, detail=str(ve))
+        except OpenAIAPIStatusError as e:
+            # Handle OpenAI specific API errors (includes 4xx/5xx from their API)
+            status_code = e.status_code
+            detail = f"OpenAI API error: {e.message}" # Use message from OpenAI error
+            logger.error(
+                "OpenAI API error encountered",
+                status_code=status_code,
+                detail=detail,
+                response=e.response.text if e.response else "N/A", # Log raw response if available
+                provider=request.provider,
+                model=request.model,
+                exc_info=True # Add traceback info to log
+            )
+            # Re-raise with the original status code if it's client-side (4xx)
+            # or keep it as 500 if it was a server error on OpenAI's side
+            raise HTTPException(status_code=status_code, detail=detail)
         except Exception as e:
             # Catch unexpected errors and return a 500
             logger.error("Caught unexpected error", exception=str(e)) # Log the full error for debugging
@@ -67,7 +83,7 @@ class LLMRouter:
             model=request.model,
             input=prompt)
         
-        return response
+        return response.to_dict()
 
     def _handle_anthropic(self, request: QueryRequest) -> dict:        
         if not self.cfg.get("anthropic.key"):
@@ -87,7 +103,7 @@ class LLMRouter:
             max_tokens=1024, #we should add this to the base request model
             messages=prompt
         )
-        return response
+        return response.to_dict()
 
     def _handle_google(self, request: QueryRequest) -> dict:
         
@@ -110,7 +126,7 @@ class LLMRouter:
 
         response = chat.send_message(request.message)
         
-        return response
+        return response.model_dump()
     
     def _handle_azure(self, request: QueryRequest) -> dict:
         prompt = self.prompt_manager.make_chat_prompt(
@@ -130,4 +146,4 @@ class LLMRouter:
             model="gpt-4.1",
             input=prompt)
         
-        return response
+        return response.to_dict()
