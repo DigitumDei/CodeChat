@@ -59,12 +59,18 @@ jobs:
         run: |
           docker build --target prod -t codechat:latest .
 
-      - name: Push to GitHub Container Registry
+      - name: set lower case owner name
+        run: |
+          echo "OWNER_LC=${OWNER,,}" >>${GITHUB_ENV}
+        env:
+          OWNER: '${{ github.repository_owner }}'
+
+      - name: Push $OWNER_LC/codechat:latest to GitHub Container Registry
         if: github.ref == 'refs/heads/main'
         env:
           REGISTRY: ghcr.io
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | docker login $REGISTRY -u ${{ github.actor }} --password-stdin
-          docker tag codechat:latest $REGISTRY/${{ github.repository_owner }}/codechat:latest
-          docker push $REGISTRY/${{ github.repository_owner }}/codechat:latest
+          docker tag codechat:latest $REGISTRY/$OWNER_LC/codechat:latest
+          docker push $REGISTRY/$OWNER_LC/codechat:latest
