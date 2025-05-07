@@ -1,27 +1,30 @@
 # codechat/providers/openai.py
-import json, asyncio
-from openai import OpenAI
+import json
+import asyncio
+from typing import AsyncIterator, Iterator
+from openai import OpenAI # type: ignore[attr-defined] # openai > 1.0 has this
 from codechat.providers import ProviderInterface, register
 from codechat.prompt import PromptManager
 from codechat.models import QueryRequest
 
 import structlog
+
+from codechat.config import get_config
 logger = structlog.get_logger(__name__)
 
 class OpenAIProvider(ProviderInterface):
     name = "openai"
 
     def __init__(self):
-        self.cfg = {}           # load in __init__ or via DI
         self.prompt = PromptManager()
 
     # --- util -----------------------------------------------------------
     def _client(self):
         self.check_key()
-        return OpenAI(api_key=self.cfg["openai.key"])
+        return OpenAI(api_key=get_config().get("openai.key"))
 
     def check_key(self):
-        if "openai.key" not in self.cfg:
+        if not get_config().get("openai.key"):
             logger.warning("OpenAI API key not found in config")
             raise ValueError("OpenAI API key not found in config, call codechat config set openai.key sk-…")
 
@@ -36,26 +39,38 @@ class OpenAIProvider(ProviderInterface):
         )
         return resp.to_dict()
 
-    async def stream(self, req: QueryRequest):
+    async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
         messages = self.prompt.make_chat_prompt(
             req.history, req.message, req.provider
         )
-        loop = asyncio.get_running_loop()
+        # This inner function is the actual async generator
+        async def _chunk_generator() -> AsyncIterator[str]:
+            loop = asyncio.get_running_loop()
 
-        def _blocking():
-            for ev in self._client().chat.completions.create(
-                    model=req.model, messages=messages, stream=True):
-                delta = ev.choices[0].delta.content or ""
-                yield json.dumps({"token": delta, "finish": False})
-            yield json.dumps({"finish": True})
+            # This is the original synchronous generator that interacts with the OpenAI client
+            def _blocking_openai_call_sync_generator() -> Iterator[str]:
+                client = self._client() 
+                for ev in client.chat.completions.create(
+                        model=req.model, messages=messages, stream=True):
+                    delta = ev.choices[0].delta.content or ""
+                    yield json.dumps({"token": delta, "finish": False})
+                yield json.dumps({"finish": True})
+            
+            # This function will be executed in the executor thread.
+            # It calls the synchronous generator function and collects its results into a list.
+            def _collect_blocking_generator_results() -> list[str]:
+                sync_gen_obj = _blocking_openai_call_sync_generator()
+                return list(sync_gen_obj)
 
-        for chunk in await loop.run_in_executor(None, list, _blocking()):
-            yield chunk
-
-    # optional: lazy cache of available models
-    @property
-    def models(self) -> list[str]:
-        return ["gpt-4o", "gpt-4o-mini"]
+            # Run the collection function in an executor
+            # all_response_chunks will be of type list[str]
+            all_response_chunks: list[str] = await loop.run_in_executor(
+                None, _collect_blocking_generator_results
+            )
+            
+            for chunk_str in all_response_chunks:
+                yield chunk_str
+        return _chunk_generator()
 
 # register on import
 register(OpenAIProvider())

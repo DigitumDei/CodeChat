@@ -8,15 +8,18 @@ from codechat.models import QueryRequest
 from codechat.errors import add_global_error_handlers
 from codechat.logging import setup_logging, RequestIDMiddleware
 import structlog
-import uvicorn # Import uvicorn here
+import uvicorn
+
+from codechat.config import get_config, set_config
 
 # instantiate core components early (needed for logging setup and lifespan)
+set_config()
 indexer = Indexer()
 watcher = Watcher(indexer)
 router = LLMRouter() # router loads cfg in its ctor
 
 # ---- structured logging setup ----
-setup_logging(router.cfg)
+setup_logging(get_config())
 struct_logger = structlog.get_logger("server.lifespan") # Logger for lifespan events
 
 # ---- Lifespan context manager ----
@@ -57,7 +60,7 @@ async def reload_config():
     logger = structlog.get_logger("server.reload_config")
     try:
         logger.info("Reloading configuration...")
-        router.set_config() # Call set_config on the existing instance
+        set_config() # Call set_config on the existing instance
         logger.info("Configuration reloaded.")
         return {"message": "Configuration reloaded successfully"}
     except Exception as e:

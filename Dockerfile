@@ -22,10 +22,12 @@ RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
 
 WORKDIR /src/daemon
 COPY daemon/pyproject.toml daemon/poetry.lock ./
+
 COPY daemon/codechat ./codechat
 COPY daemon/tests ./tests 
 
-RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
+RUN --mount=type=cache,id=poetry-cache,target=/root/.cache/pypoetry \
+    --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     poetry install --no-interaction --no-ansi --with dev
 
 RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \

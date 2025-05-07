@@ -1,14 +1,15 @@
-# codechat/providers/__init__.py
 from typing import Protocol, AsyncIterator
 from codechat.models import QueryRequest
+import structlog
+logger = structlog.get_logger(__name__)
 
 class ProviderInterface(Protocol):
-    name: str                # "openai", "anthropic", …
-    models: list[str]        # cached list or on‑demand call
+    name: str                # "openai", "anthropic",
 
     def send(self, req: QueryRequest) -> dict:             ...
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]: ...
-    def check_key(self) -> None:                           ... 
+    def check_key(self) -> None:                           ...     
+    
 
 _registry: dict[str, ProviderInterface] = {}
 
@@ -20,3 +21,10 @@ def get(name: str) -> ProviderInterface:
 
 def all() -> dict[str, ProviderInterface]:
     return _registry
+
+# Import all provider modules to ensure they register themselves.
+# These imports are for their side-effects (calling register()).
+from . import openai # noqa: F401, E402
+from . import anthropic # noqa: F401, E402
+from . import google # noqa: F401, E402
+from . import azure # noqa: F401, E402
