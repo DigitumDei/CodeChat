@@ -1,6 +1,8 @@
 # h:\SourceCode\CodeChat\daemon\codechat\server.py
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+import json
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import StreamingResponse
 from codechat.indexer import Indexer
 from codechat.watcher import Watcher
 from codechat.llm_router import LLMRouter
@@ -47,9 +49,20 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/query")
-def handle_query(request: QueryRequest):
-    # route to appropriate LLM backend
-    return router.route(request)
+async def handle_query(request: Request, stream: bool = Query(default=False)):
+    payload = await request.json()
+    query = QueryRequest(**payload)
+    if stream:
+        async def event_stream():
+            async for chunk in router.stream(query):
+                #convert chunk back to json
+                chunkjson = json.loads(chunk)
+                if chunkjson.get("token"):
+                    yield chunkjson.get("token")
+
+        return StreamingResponse(event_stream(),
+                                 media_type="text/event-stream")
+    return router.route(query)
 
 
 @app.post("/admin/reload-config")

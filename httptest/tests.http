@@ -32,6 +32,25 @@ Content-Type: application/json
     "message":"What is my name and what am I doing? What are you tasked with?"
 }
 
+### stream
+# Currently streaming doesn't display well, use curl to test
+# curl -X POST   -H "Content-Type: application/json"   -H "Accept: text/event-stream"   -d '{
+#     "provider":"openai",
+#     "model":"gpt-4o",
+#     "history":[],
+#     "message":"Tell me a two paragraph story."
+#   }'   -N   http://localhost:16005/query?stream=true
+
+POST  http://localhost:16005/query?stream=true
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+    "provider":{{gptprovider}}, 
+    "model":{{gpt-4o}}, 
+    "history":[], 
+    "message":"Tell me a two paragraph story."
+}
 
 
 ### Bad JSON → 422 with VALIDATION_ERR
