@@ -2,6 +2,8 @@ ARG baseImage=python:3.12-slim
 # ---------- builder ----------
 FROM ${baseImage} AS builder
 
+ENV POETRY_VIRTUALENVS_CREATE=false \ 
+    POETRY_VIRTUALENVS_IN_PROJECT=false
 # Use BuildKit cache mounts for apt and pip
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
@@ -21,10 +23,16 @@ RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
     pip install --no-cache-dir pip==25.0.1 poetry==2.1.2
 
 WORKDIR /src/daemon
+# 1. copy lock files and install deps
 COPY daemon/pyproject.toml daemon/poetry.lock ./
-
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    poetry install --no-root --no-interaction --no-ansi --with dev
+# 2. now bring in the source
 COPY daemon/codechat ./codechat
-COPY daemon/tests ./tests 
+COPY daemon/tests   ./tests
+
+# 3. install the root package (quick)
+RUN poetry install --only-root --no-interaction --no-ansi
 
 RUN --mount=type=cache,id=poetry-cache,target=/root/.cache/pypoetry \
     --mount=type=cache,id=pip-cache,target=/root/.cache/pip \

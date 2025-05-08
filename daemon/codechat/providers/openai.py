@@ -74,24 +74,3 @@ class OpenAIProvider(ProviderInterface):
 
 # register on import
 register(OpenAIProvider())
-
-
-#def _handle_openai(self, request: QueryRequest) -> dict:
-        # prompt = self.prompt_manager.make_chat_prompt(
-        #     history=request.history,
-        #     instruction=request.message,
-        #     provider=request.provider
-        # )
-        
-        # #if cfg.get("openai.key") doesn't exist throw an error
-        # if not self.cfg.get("openai.key"):
-        #     logger.warning("OpenAI API key not found in config")
-        #     raise ValueError("OpenAI API key not found in config, call codechat config set openai.key sk-…")
-
-        # client = OpenAI(api_key=self.cfg.get("openai.key"))
-
-        # response = client.responses.create(
-        #     model=request.model,
-        #     input=prompt)
-        
-        # return response.to_dict()
