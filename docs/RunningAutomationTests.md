@@ -4,5 +4,5 @@ This document outlines the steps to execute the automation tests for the CodeCha
 
 ```powershell
 docker build --target test -t codechat:test .
-docker run -it codechat:test
+docker run codechat:test
 ```

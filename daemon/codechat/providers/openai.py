@@ -2,7 +2,8 @@
 import json
 import asyncio
 from typing import AsyncIterator, Iterator
-from openai import OpenAI # type: ignore[attr-defined] # openai > 1.0 has this
+from fastapi import HTTPException
+from openai import OpenAI,APIStatusError  # type: ignore[attr-defined] # openai > 1.0 has this
 from codechat.providers import ProviderInterface, register
 from codechat.prompt import PromptManager
 from codechat.models import QueryRequest
@@ -31,13 +32,28 @@ class OpenAIProvider(ProviderInterface):
 
     # --- required interface --------------------------------------------
     def send(self, req: QueryRequest) -> dict:
-        messages = self.prompt.make_chat_prompt(
-            req.history, req.message, req.provider
-        )
-        resp = self._client().chat.completions.create(
-            model=req.model, messages=messages
-        )
-        return resp.to_dict()
+        try:            
+            messages = self.prompt.make_chat_prompt(
+                req.history, req.message, req.provider
+            )
+            resp = self._client().chat.completions.create(
+                model=req.model, messages=messages
+            )
+            return resp.to_dict()
+        except APIStatusError as e:
+            # Handle OpenAI specific API errors (includes 4xx/5xx from their API)
+            status_code = e.status_code
+            detail = f"OpenAI API error: {e.message}" 
+            logger.error(
+                "OpenAI API error encountered",
+                status_code=status_code,
+                detail=detail,
+                response=e.response.text if e.response else "N/A", 
+                provider=req.provider,
+                model=req.model,
+                exc_info=True 
+            )
+            raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
         messages = self.prompt.make_chat_prompt(

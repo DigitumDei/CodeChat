@@ -2,7 +2,8 @@ import json
 import asyncio
 from typing import AsyncIterator, Iterator
 
-from anthropic import Anthropic
+from anthropic import APIStatusError, Anthropic
+from fastapi import HTTPException
 
 from codechat.providers import ProviderInterface, register
 from codechat.prompt import PromptManager
@@ -32,15 +33,30 @@ class AnthropicProvider(ProviderInterface):
 
     # --- required interface --------------------------------------------
     def send(self, req: QueryRequest) -> dict:
-        messages = self.prompt.make_chat_prompt(req.history, req.message, req.provider)
+        try:
+            messages = self.prompt.make_chat_prompt(req.history, req.message, req.provider)
 
-        response = self._client().messages.create(
-            model=req.model,
-            system=self.prompt.get_system_prompt(),
-            max_tokens=1024,
-            messages=messages
-        )
-        return response.to_dict()
+            response = self._client().messages.create(
+                model=req.model,
+                system=self.prompt.get_system_prompt(),
+                max_tokens=1024,
+                messages=messages
+            )
+            return response.to_dict()
+        except APIStatusError as e:
+            # Handle Anthropic specific API errors (includes 4xx/5xx from their API)
+            status_code = e.status_code
+            detail = f"Anthropic API error: {e.message}" 
+            logger.error(
+                "Anthropic API error encountered",
+                status_code=status_code,
+                detail=detail,
+                response=e.response.text if e.response else "N/A", 
+                provider=req.provider,
+                model=req.model,
+                exc_info=True 
+            )
+            raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
         messages = self.prompt.make_chat_prompt(

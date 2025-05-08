@@ -27,6 +27,10 @@ flowchart TB
 
 See [docs/InstallingRunCodeChat.md](docs/InstallingRunCodeChat.md)
 
+# Running Automation Tests
+
+See [docs/RunningAutomationTests.md](docs/RunningAutomationTests.md)
+
 # VS Code Extension
 
 See [docs/VS-Code-Extension.md](docs/VS-Code-Extension.md)
