@@ -61,23 +61,10 @@ class OpenAIProvider(ProviderInterface):
         # calling the blocking OpenAI SDK in an executor and yielding results.
         async def _chunk_generator_impl() -> AsyncIterator[str]:
             loop = asyncio.get_running_loop()
-            client = None # Initialize client to None for broader scope if needed for cleanup (though not strictly here)
-
-            try:
-                # Initial setup that can fail (e.g., API key check, prompt creation)
-                # self.check_key() is implicitly called by self._client()
-                client = self._client()
-                messages_for_stream = self.prompt.make_chat_prompt(
-                    req.history, req.message, req.provider
-                )
-            except ValueError as ve: # Handles errors from self.check_key() or other setup ValueErrors
-                logger.error("ValueError during OpenAI stream setup", detail=str(ve), provider_name=self.name, exc_info=True)
-                yield json.dumps({"error": True, "message": str(ve), "finish": True})
-                return # Stop generation
-            except Exception as e: # Catch any other unexpected errors during setup
-                logger.error("Unexpected error during OpenAI stream setup", detail=str(e), provider_name=self.name, exc_info=True)
-                yield json.dumps({"error": True, "message": "An unexpected error occurred during stream setup.", "finish": True})
-                return # Stop generation
+            client = self._client()
+            messages_for_stream = self.prompt.make_chat_prompt(
+                req.history, req.message, req.provider
+            )
 
             # This function will run in the executor and get the next item
             # from the synchronous OpenAI stream.
@@ -101,7 +88,6 @@ class OpenAIProvider(ProviderInterface):
                         break
 
                     delta = ev.choices[0].delta.content or ""
-                    logger.debug(delta, provider_name=self.name) # Changed from warning to debug
                     yield json.dumps({"token": delta, "finish": False})
 
                 yield json.dumps({"finish": True})
@@ -125,7 +111,7 @@ class OpenAIProvider(ProviderInterface):
                 }
                 yield json.dumps(error_payload)
             except Exception as e: # Catch-all for unexpected errors during the streaming loop
-                logger.error("Unexpected error during OpenAI stream processing", provider_name=self.name, exc_info=True)
+                logger.error("Unexpected error during OpenAI stream processing:", exception=str(e), provider_name=self.name, exc_info=True)
                 error_payload = {"error": True, "message": "An unexpected error occurred while streaming.", "finish": True}
                 yield json.dumps(error_payload)
 

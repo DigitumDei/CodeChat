@@ -1,6 +1,5 @@
 import json
-import asyncio
-from typing import AsyncIterator, Iterator
+from typing import AsyncIterator
 
 from fastapi import HTTPException
 from codechat.providers import ProviderInterface, register
@@ -60,41 +59,20 @@ class GoogleProvider(ProviderInterface):
 
         # This inner function is the actual async generator
         async def _chunk_generator() -> AsyncIterator[str]:
-            loop = asyncio.get_running_loop()
+            history = self.prompt.make_chat_prompt(req.history, req.message, req.provider)
+            config = types.GenerateContentConfig(system_instruction=self.prompt.get_system_prompt())
+            chat = self._client().aio.chats.create(model=req.model, history=history, config=config)            
 
-# This is the synchronous generator that interacts with the Google GenAI client
-            def _blocking_google_call_sync_generator() -> Iterator[str]:
-                history = self.prompt.make_chat_prompt(req.history, req.message, req.provider)
-                config = types.GenerateContentConfig(system_instruction=self.prompt.get_system_prompt())
-                chat = self._client().aio.chats.create(model=req.model, history=history, config=config)
-                
-
-                try:
-                    chat.send_message_stream(req.message)
+            try:
+                async for chunk in await chat.send_message_stream(req.message):
+                    token_text = chunk.text
+                    if token_text: # Ensure we don't send empty updates
+                        yield json.dumps({"token": token_text, "finish": False})
+                yield json.dumps({"token": "", "finish": True}) # Signal completion
+            except Exception as e:
+                logger.error("Google GenAI stream error", exc_info=e, model=req.model)
                     
-                    for chunk in chat.send_message_stream(req.message):
-                        token_text = chunk.text
-                        if token_text: # Ensure we don't send empty updates
-                            yield json.dumps({"token": token_text, "finish": False})
-                    yield json.dumps({"token": "", "finish": True}) # Signal completion
-                except Exception as e:
-                    logger.error("Google GenAI stream error", exc_info=e, model=req.model)
-                    
-            
-            # This function will be executed in the executor thread.
-            # It calls the synchronous generator function and collects its results into a list.
-            def _collect_blocking_generator_results() -> list[str]:
-                sync_gen_obj = _blocking_google_call_sync_generator()
-                return list(sync_gen_obj)
 
-            # Run the collection function in an executor
-            # all_response_chunks will be of type list[str]
-            all_response_chunks: list[str] = await loop.run_in_executor(
-                None, _collect_blocking_generator_results
-            )
-            
-            for chunk_str in all_response_chunks:
-                yield chunk_str
         return _chunk_generator()
 
 # register on import
