@@ -45,7 +45,7 @@ class AnthropicProvider(ProviderInterface):
                 max_tokens=1024,
                 messages=messages
             )
-            return json.dumps({"text": response.content[0].text})
+            return {"text": response.content[0].text}
         except APIStatusError as e:
             # Handle Anthropic specific API errors (includes 4xx/5xx from their API)
             status_code = e.status_code

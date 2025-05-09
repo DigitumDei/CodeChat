@@ -1,7 +1,7 @@
 # h:\SourceCode\CodeChat\daemon\codechat\server.py
 from contextlib import asynccontextmanager
 import json
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 from codechat.indexer import Indexer
 from codechat.watcher import Watcher
@@ -49,9 +49,7 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/query")
-async def handle_query(request: Request, stream: bool = Query(default=False)):
-    payload = await request.json()
-    query = QueryRequest(**payload)
+async def handle_query(query: QueryRequest, stream: bool = Query(default=False)):
     if stream:
         async def event_stream():
             async for chunk in router.stream(query):
@@ -62,7 +60,7 @@ async def handle_query(request: Request, stream: bool = Query(default=False)):
 
         return StreamingResponse(event_stream(),
                                  media_type="text/event-stream")
-    result = json.loads(router.route(query))
+    result = router.route(query)
     return result.get("text")
 
 
