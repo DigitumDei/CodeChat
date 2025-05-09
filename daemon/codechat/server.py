@@ -62,7 +62,8 @@ async def handle_query(request: Request, stream: bool = Query(default=False)):
 
         return StreamingResponse(event_stream(),
                                  media_type="text/event-stream")
-    return router.route(query)
+    result = json.loads(router.route(query))
+    return result.get("text")
 
 
 @app.post("/admin/reload-config")

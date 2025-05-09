@@ -37,7 +37,7 @@ class GoogleProvider(ProviderInterface):
             config = types.GenerateContentConfig(system_instruction=self.prompt.get_system_prompt())
             chat = self._client().chats.create(model=req.model, history=history, config=config)
             response = chat.send_message(req.message)        
-            return response.model_dump()
+            return json.dumps({"text": response.text})
         except errors.APIError as e:
             # Handle Google specific API errors (includes 4xx/5xx from their API)
             status_code = e.code

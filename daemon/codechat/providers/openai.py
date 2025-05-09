@@ -39,7 +39,7 @@ class OpenAIProvider(ProviderInterface):
             resp = self._client().chat.completions.create(
                 model=req.model, messages=messages
             )
-            return resp.to_dict()
+            return json.dumps({"text": resp.choices[0].message.content})
         except APIStatusError as e:
             # Handle OpenAI specific API errors (includes 4xx/5xx from their API)
             status_code = e.status_code

@@ -19,8 +19,8 @@ POST  http://localhost:16005/query
 Content-Type: application/json
 
 {
-    "provider":{{geminiprovider}}, 
-    "model":{{gemini-25}}, 
+    "provider":{{gptprovider}}, 
+    "model":{{gpt-4o}}, 
     "history":[{
         "role":"user",
         "content":"Hello, my name is Dion, I'm trying to test you memory."
