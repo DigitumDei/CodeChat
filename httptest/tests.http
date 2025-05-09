@@ -46,8 +46,8 @@ Content-Type: application/json
 Accept: text/event-stream
 
 {
-    "provider":{{gptprovider}}, 
-    "model":{{gpt-4o}}, 
+    "provider":{{claudeprovider}}, 
+    "model":{{claude-35-haiku}}, 
     "history":[], 
     "message":"Tell me a two paragraph story."
 }

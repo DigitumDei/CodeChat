@@ -1,8 +1,7 @@
 import json
-import asyncio
-from typing import AsyncIterator, Iterator
+from typing import AsyncIterator
 
-from anthropic import APIStatusError, Anthropic
+from anthropic import APIStatusError, Anthropic, AsyncAnthropic
 from fastapi import HTTPException
 
 from codechat.providers import ProviderInterface, register
@@ -24,6 +23,10 @@ class AnthropicProvider(ProviderInterface):
     def _client(self):
         self.check_key()
         return Anthropic(api_key=get_config().get("anthropic.key"))
+    
+    def _async_client(self):
+        self.check_key()
+        return AsyncAnthropic(api_key=get_config().get("anthropic.key"))
 
     def check_key(self):
         if not get_config().get("anthropic.key"):
@@ -65,42 +68,18 @@ class AnthropicProvider(ProviderInterface):
         system_prompt_content = self.prompt.get_system_prompt()
 
         # This inner function is the actual async generator
-        async def _chunk_generator() -> AsyncIterator[str]:
-            loop = asyncio.get_running_loop()
+        async def _chunk_generator() -> AsyncIterator[str]:           
+            async with self._async_client().messages.stream(
+                    model=req.model,
+                    system=system_prompt_content,
+                    messages=messages,
+                    max_tokens=1024  # Consider making this configurable
+                ) as stream:
+                    async for text_chunk in stream.text_stream:
+                        yield json.dumps({"token": text_chunk, "finish": False})
 
-            # This is the synchronous generator that interacts with the Anthropic client
-            def _blocking_anthropic_call_sync_generator() -> Iterator[str]:
-                client = self._client() 
-                try:
-                    with client.messages.stream(
-                        model=req.model,
-                        system=system_prompt_content,
-                        messages=messages,
-                        max_tokens=1024  # Consider making this configurable
-                    ) as stream:
-                        for text_delta in stream.text_stream:
-                            yield json.dumps({"token": text_delta, "finish": False})
-                    # Signal completion after the stream has finished
                     yield json.dumps({"token": "", "finish": True})
-                except Exception as e:
-                    logger.error("Anthropic stream error", exc_info=e, model=req.model)
-                    # Yield an error message to the client
-                    yield json.dumps({"error": f"Anthropic API error: {str(e)}", "token": "", "finish": True})
-            
-            # This function will be executed in the executor thread.
-            # It calls the synchronous generator function and collects its results into a list.
-            def _collect_blocking_generator_results() -> list[str]:
-                sync_gen_obj = _blocking_anthropic_call_sync_generator()
-                return list(sync_gen_obj)
 
-            # Run the collection function in an executor
-            # all_response_chunks will be of type list[str]
-            all_response_chunks: list[str] = await loop.run_in_executor(
-                None, _collect_blocking_generator_results
-            )
-            
-            for chunk_str in all_response_chunks:
-                yield chunk_str
         return _chunk_generator()
 
 # register on import
