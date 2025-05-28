@@ -67,47 +67,40 @@ class Indexer:
             logger.debug("Path is not a file, ignoring for single event processing", path=str(file_path))
             return False
 
-        # 2. Application-specific ignore: its own cache directory
-        if self.vdb._cache_dir.is_relative_to(self.root):
-            try:
-                if file_path.is_relative_to(self.vdb._cache_dir):
-                    logger.debug("Path is within VDB cache directory, ignoring.", path=str(file_path))
-                    return False
-            except ValueError:
-                pass # file_path is not in cache_dir, or cache_dir is not under self.root
-
-        # 3. Git-based ignore check (respects .gitignore)
+        # 2. Git-based ignore check (respects .gitignore)
         if self.repo:
             try:
                 # file_path is absolute. is_ignored needs path relative to repo root.
                 path_relative_to_git_root = file_path.relative_to(self.repo.working_dir)
-                if self.repo.is_ignored(path_relative_to_git_root):
+                logger.debug("Checking if path is ignored by Git", path_relative_to_git_root)
+                ignored = self.repo.ignored([path_relative_to_git_root])
+                if ignored:
                     logger.debug("Path is ignored by Git (.gitignore)", path=str(file_path))
                     return False
                 else:
-                    # Not ignored by Git, and passed previous checks, so it's relevant
+                    # Not ignored by Git, and it's a file (checked earlier), so it's relevant
                     logger.debug("Path is relevant (checked by Git)", path=str(file_path))
                     return True 
             except ValueError:
-                # This means file_path is not under self.repo.working_dir.
-                # This could happen if self.root is a subdir of a git repo, and file_path is outside self.root.
-                # Or if file_path is not part of ANY git repo found by search_parent_directories.
-                # If it's not in the repo, .gitignore rules from that repo don't apply.
-                # So, we fall through to non-Git checks.
                 logger.debug("Path not within the discovered Git repo's working directory. Proceeding with non-Git checks.", path=str(file_path), git_repo_root=str(self.repo.working_dir))
             except Exception as e: # Catch other Git errors during is_ignored
                 logger.warning("Error checking if path is ignored by Git. Proceeding with non-Git checks.", path=str(file_path), error=e)
-                # Fall through to non-Git checks
 
-        # 4. Fallback non-Git ignore check (if self.repo is None or Git check fell through/failed)
+        # 3. Application-specific ignore: its own cache directory (applies if not Git-ignored or no Git)
+        if self.vdb._cache_dir.is_relative_to(self.root):
+            try:
+                if file_path.is_relative_to(self.vdb._cache_dir):
+                    logger.debug("Path is within VDB cache directory, ignoring (non-Git check).", path=str(file_path))
+                    return False
+            except ValueError:
+                pass # file_path is not in cache_dir, or cache_dir is not under self.root
+
+        # 4. Fallback non-Git ignore check for common directories (if self.repo is None or Git check fell through/failed)
         # Common ignored directory names/prefixes
         ignored_dir_components = {".venv", "__pycache__", ".hg", ".svn", "node_modules", "build", "dist", "target"}
-        # Note: .git is handled by self.repo.is_ignored if Git is active.
-        # If Git is not active, we might still want to ignore .git dirs explicitly if encountered.
-        # However, build_index's git ls-files would naturally exclude .git contents.
-        # For single events, if not a git repo, an event from .git/ itself is unlikely to be a .py file.
+        # .git directory itself should also be ignored if not using Git for filtering
         if any(part in ignored_dir_components for part in file_path.parts):
-            logger.debug("Path ignored due to common directory component (non-Git check)", path=str(file_path))
+            logger.debug("Path ignored due to common directory component (fallback non-Git check)", path=str(file_path))
             return False
 
         logger.debug("Path is relevant for single event processing", path=str(file_path))
@@ -121,7 +114,12 @@ class Indexer:
             if not self._is_relevant_path(src_path):
                 return
             try:
+                # Attempt to read as text. If this fails for binary files,
+                # we might need a strategy to handle them (e.g., skip embedding, embed metadata only, or use a different embedding strategy)
                 full_text_content = src_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.warning("Could not decode file as UTF-8. Skipping embedding for this file.", path=src_path_str)
+                return # Or handle binary files differently
             except Exception as e:
                 logger.error("Failed to read file for event processing", path=src_path_str, error=e)
                 return
@@ -201,8 +199,8 @@ class Indexer:
                     # Ensure the file is within the specified self.root directory
                     # and meets our criteria (e.g., .py extension)
                     try:
-                        if abs_path.is_relative_to(self.root): # Checks if abs_path is under self.root
-                            processed_repo_files.append(abs_path)
+                        if abs_path.is_relative_to(self.root) and abs_path.is_file(): # Checks if abs_path is under self.root and is a file
+                            processed_repo_files.append(abs_path) 
                     except ValueError: # Not relative_to self.root
                         continue
                 
@@ -219,8 +217,17 @@ class Indexer:
              logger.info("GitPython library not available. build_index falling back to rglob.")
 
         if not git_used_for_discovery: # Fallback if GitPython not available or if Git discovery failed
-            project_files = [p for p in self.root.rglob("*.py") if ".venv" not in str(p)]
-            logger.info("Using rglob to discover project files.", count=len(project_files), reason="Git not used or fallback triggered")
+            logger.info("Using rglob to discover project files (fallback).", reason="Git not used or fallback triggered")
+            discovered_files = [p for p in self.root.rglob("*") if p.is_file()]
+            # Apply non-Git filtering to the rglob results
+            project_files = []
+            for p in discovered_files:
+                # Use a simplified version of _is_relevant_path's non-Git checks here
+                # to avoid indexing .venv, .git, __pycache__ etc. in fallback mode.
+                if self._is_relevant_path(p): # _is_relevant_path will use its non-Git fallback logic
+                    project_files.append(p)
+            logger.info("Filtered rglob results.", initial_count=len(discovered_files), final_count=len(project_files))
+
 
         enc = tiktoken.encoding_for_model(EMBED_MODEL) # noqa: F841
 
@@ -232,7 +239,11 @@ class Indexer:
         for file_path in project_files: # Renamed 'file' to 'file_path' for clarity
             path_str = str(file_path)
             try:
+                # Attempt to read as text.
                 full_text_content = file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.warning("Could not decode file as UTF-8 during full build. Skipping embedding.", path=path_str)
+                continue # Skip this file for embedding
             except Exception as e:
                 logger.error("Failed to read file", path=path_str, error=e)
                 continue
