@@ -62,7 +62,7 @@ CMD ["poetry", "run", "pytest", "-q"]
 
 # ---------- runtime ----------
 
-FROM prodsetup as prod
+FROM prodsetup AS prod
 
 COPY --from=builder /app/dist/ /app/dist/
 RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
