@@ -3,7 +3,11 @@ from pathlib import Path
 import hashlib
 from openai import OpenAI
 import tiktoken                       # quick token trimming helper
-from typing import Optional, List, Dict, Any # Ensure List, Dict, Any are imported if not already
+from typing import Optional
+import structlog
+from codechat.vector_db import VectorDB
+from codechat.dep_graph import DepGraph
+from codechat.config import get_config
 
 GIT_PYTHON_AVAILABLE = False
 try:
@@ -13,11 +17,7 @@ try:
 except ImportError:
     # GitPython library itself is not installed.
     pass # GIT_PYTHON_AVAILABLE remains False
-import structlog
 
-from codechat.vector_db import VectorDB
-from codechat.dep_graph import DepGraph
-from codechat.config import get_config
 
 logger = structlog.get_logger(__name__)
 
@@ -70,10 +70,9 @@ class Indexer:
         # 2. Git-based ignore check (respects .gitignore)
         if self.repo:
             try:
-                # file_path is absolute. is_ignored needs path relative to repo root.
                 path_relative_to_git_root = file_path.relative_to(self.repo.working_dir)
                 logger.debug("Checking if path is ignored by Git", path_relative_to_git_root)
-                ignored = self.repo.ignored([path_relative_to_git_root])
+                ignored = self.repo.ignored(path_relative_to_git_root)
                 if ignored:
                     logger.debug("Path is ignored by Git (.gitignore)", path=str(file_path))
                     return False
