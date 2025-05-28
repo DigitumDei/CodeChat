@@ -17,14 +17,14 @@ RUN git config --system --add safe.directory /workspace
 # Make builder depend on prodsetup to ensure sequential execution of initial setup steps. Prevents apt_cache locking
 FROM prodsetup AS builder
 
-ENV POETRY_VIRTUALENVS_CREATE=false \ 
+ENV POETRY_VIRTUALENVS_CREATE=false \
     POETRY_VIRTUALENVS_IN_PROJECT=false
     
 RUN --mount=type=cache,id=apt_cache,target=/var/cache/apt \
     --mount=type=cache,id=apt_lib,target=/var/lib/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        build-essential python3-dev && \ 
+        build-essential python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -48,10 +48,6 @@ COPY daemon/tests   ./tests
 
 # 3. install the root package (quick)
 RUN poetry install --only-root --no-interaction --no-ansi
-
-RUN --mount=type=cache,id=poetry-cache,target=/root/.cache/pypoetry \
-    --mount=type=cache,id=pipcache,target=/root/.cache/pip \
-    poetry install --no-interaction --no-ansi --with dev
 
 RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
     poetry build -f wheel -o /app/dist
