@@ -51,18 +51,21 @@ FROM ${baseImage} AS prod
 
 COPY --from=builder /app/dist/ /app/dist/
 
-# Ensure the venv's bin directory is in the PATH
 ENV PATH="/usr/local/bin:${PATH}"
 
-RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
-    pip install /app/dist/*.whl 
+# Install git in the runtime stage as well
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 
-# Non-root user setup
+RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
+    pip install --no-cache-dir /app/dist/*.whl
+
 RUN adduser --system --no-create-home --group codechat
 USER codechat
 WORKDIR /workspace
 EXPOSE 16005
 
-# Entrypoint uses the script installed into the venv's bin directory
 ENTRYPOINT ["codechat", "start", "--host", "0.0.0.0", "--port", "16005"]
-
