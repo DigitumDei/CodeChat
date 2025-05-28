@@ -47,9 +47,7 @@ FROM builder AS test
 CMD ["poetry", "run", "pytest", "-q"]
 
 # ---------- runtime ----------
-FROM ${baseImage} AS prod
-
-COPY --from=builder /app/dist/ /app/dist/
+FROM ${baseImage} AS prodsetup
 
 ENV PATH="/usr/local/bin:${PATH}"
 
@@ -60,6 +58,12 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
 
+# Add /workspace to safe.directory system-wide for Git
+RUN git config --system --add safe.directory /workspace
+
+FROM prodsetup as prod
+
+COPY --from=builder /app/dist/ /app/dist/
 RUN --mount=type=cache,id=pipcache,target=/root/.cache/pip \
     pip install --no-cache-dir /app/dist/*.whl
 

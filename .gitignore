@@ -11,4 +11,4 @@ vscode-extension/CodeChat/out/
 
 *.vsix
 
-__pycache__/
+*__pycache__/

@@ -1,5 +1,4 @@
 import threading
-import time
 import structlog
 from watchdog.observers.polling import PollingObserver as Observer # Use PollingObserver
 from watchdog.events import FileSystemEventHandler
@@ -42,18 +41,19 @@ class Watcher(FileSystemEventHandler):
         logger.info("Watcher: on_any_event received", **event_details)
 
     def on_modified(self, event):
-        logger.info("Watcher: on_modified triggered", src_path=event.src_path, is_directory=event.is_directory)
-        self.indexer.build_index()
+        logger.info("Watcher: on_modified triggered, forwarding to Indexer", src_path=event.src_path, is_directory=event.is_directory)
+        self.indexer.process_file_event(event_type="modified", src_path_str=event.src_path)
 
     def on_created(self, event):
-        logger.info("Watcher: on_created triggered", src_path=event.src_path, is_directory=event.is_directory)
-        self.indexer.build_index()
+        logger.info("Watcher: on_created triggered, forwarding to Indexer", src_path=event.src_path, is_directory=event.is_directory)
+        self.indexer.process_file_event(event_type="created", src_path_str=event.src_path)
 
     def on_deleted(self, event):
-        logger.info("Watcher: on_deleted triggered", src_path=event.src_path, is_directory=event.is_directory)
-        self.indexer.build_index()
+        logger.info("Watcher: on_deleted triggered, forwarding to Indexer", src_path=event.src_path, is_directory=event.is_directory)
+        self.indexer.process_file_event(event_type="deleted", src_path_str=event.src_path)
 
     def on_moved(self, event):
-        logger.info("Watcher: on_moved triggered", src_path=event.src_path, dest_path=event.dest_path, is_directory=event.is_directory)
-        self.indexer.build_index()
+        logger.info("Watcher: on_moved triggered, forwarding to Indexer", src_path=event.src_path, dest_path=event.dest_path, is_directory=event.is_directory)
+        self.indexer.process_file_event(event_type="moved", src_path_str=event.src_path, dest_path_str=event.dest_path)
+         
         
