@@ -2,7 +2,7 @@
 from pathlib import Path
 import hashlib
 from openai import OpenAI
-import tiktoken                       # quick token trimming helper
+import tiktoken  # quick token trimming helper
 from typing import Optional
 import structlog
 from codechat.vector_db import VectorDB
@@ -30,7 +30,7 @@ class Indexer:
         self.root = Path(root).resolve()
         self.vdb  = VectorDB()
         self.dgraph = DepGraph()
-        self._client = OpenAI(api_key=get_config().get("openai.key"))
+        self._actual_openai_client: Optional[OpenAI] = None # Will be initialized on first use
         self.repo: Optional[git.Repo] = None
 
         if GIT_PYTHON_AVAILABLE:
@@ -49,6 +49,15 @@ class Indexer:
             logger.info("GitPython library not available. Git-based filtering will not be used.")
 
         self.build_index() # Perform initial full index build
+
+    @property
+    def _client(self) -> OpenAI:
+        if self._actual_openai_client is None:
+            logger.debug("Initializing OpenAI client for Indexer.")
+            api_key = get_config().get("openai.key")
+            self._actual_openai_client = OpenAI(api_key=api_key)
+        return self._actual_openai_client
+
 
     def _is_relevant_path(self, file_path: Path) -> bool:
         """
@@ -71,7 +80,6 @@ class Indexer:
         if self.repo:
             try:
                 path_relative_to_git_root = file_path.relative_to(self.repo.working_dir)
-                logger.debug("Checking if path is ignored by Git", path_relative_to_git_root)
                 ignored = self.repo.ignored(path_relative_to_git_root)
                 if ignored:
                     logger.debug("Path is ignored by Git (.gitignore)", path=str(file_path))
@@ -271,7 +279,7 @@ class Indexer:
                 temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
                 num_embedded += 1
 
-        self.vdb = temp_new_vdb # Replace old VDB with the newly built one
+        self.vdb = temp_new_vdb
         self.vdb.flush()
 
         # Rebuild dependency graph
