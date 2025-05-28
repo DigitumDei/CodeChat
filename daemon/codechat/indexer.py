@@ -51,7 +51,7 @@ class Indexer:
         self.build_index() # Perform initial full index build
 
     @property
-    def _client(self) -> OpenAI:
+    def _client(self) -> OpenAI | None:
         if self._actual_openai_client is None:
             api_key = get_config().get("openai.key")
             if not api_key:
