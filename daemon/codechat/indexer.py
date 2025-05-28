@@ -1,9 +1,9 @@
 # daemon/codechat/indexer.py
 from pathlib import Path
 import hashlib
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 import tiktoken  # quick token trimming helper
-from typing import Optional
+from typing import Optional, List
 import structlog
 from codechat.vector_db import VectorDB
 from codechat.dep_graph import DepGraph
@@ -30,7 +30,7 @@ class Indexer:
         self.root = Path(root).resolve()
         self.vdb  = VectorDB()
         self.dgraph = DepGraph()
-        self._actual_openai_client: Optional[OpenAI] = None # Will be initialized on first use
+        self._actual_openai_client: Optional[OpenAI] = None 
         self.repo: Optional[git.Repo] = None
 
         if GIT_PYTHON_AVAILABLE:
@@ -53,11 +53,33 @@ class Indexer:
     @property
     def _client(self) -> OpenAI:
         if self._actual_openai_client is None:
-            logger.debug("Initializing OpenAI client for Indexer.")
             api_key = get_config().get("openai.key")
-            self._actual_openai_client = OpenAI(api_key=api_key)
+            if not api_key:
+                logger.warning("OpenAI API key not found in config. OpenAI client will not be initialized. Embeddings will be skipped.")
+                # self._actual_openai_client remains None
+            else:
+                try:
+                    logger.debug("Initializing OpenAI client for Indexer.")
+                    self._actual_openai_client = OpenAI(api_key=api_key)
+                except OpenAIError as e: # Catch errors during OpenAI() instantiation
+                    logger.error("Failed to initialize OpenAI client. Embeddings will be skipped.", error=str(e))
+                    self._actual_openai_client = None # Ensure it's None on failure
         return self._actual_openai_client
 
+
+    def _get_embedding(self, text: str) -> Optional[List[float]]:
+        client = self._client
+        if client is None:
+            return None
+        try:
+            response = client.embeddings.create(input=text, model=EMBED_MODEL)
+            return response.data[0].embedding
+        except OpenAIError as e: # Catch API call errors (e.g. bad key, rate limits, network)
+            logger.error("OpenAI API error during embedding creation. Embeddings will be skipped for this item.", error=str(e), text_prefix=text[:50])
+            return None
+        except Exception as e: # Catch any other unexpected errors
+            logger.error("Unexpected error during embedding creation. Embeddings will be skipped for this item.", error=str(e), exc_info=True, text_prefix=text[:50])
+            return None
 
     def _is_relevant_path(self, file_path: Path) -> bool:
         """
@@ -142,13 +164,15 @@ class Indexer:
             logger.info("File event: content changed or new, updating index", path=src_path_str)
             self.vdb.remove_by_path(src_path_str) # Remove old if it exists (handles if not found)
             try:
-                embedding_response = self._client.embeddings.create(input=text_for_embedding, model=EMBED_MODEL)
-                vec = embedding_response.data[0].embedding
-                self.vdb.add(path_str=src_path_str, file_hash=current_hash, vector=vec)
-                self.vdb.flush() 
-                logger.info("TODO: Granular DepGraph update for created/modified file", path=src_path_str)
-            except Exception as e:
-                logger.error("Failed to get embedding or add to VDB for file event", path=src_path_str, error=e)
+                vec = self._get_embedding(text_for_embedding)
+                if vec:
+                    self.vdb.add(path_str=src_path_str, file_hash=current_hash, vector=vec)
+                    self.vdb.flush()
+                    logger.info("TODO: Granular DepGraph update for created/modified file", path=src_path_str)
+                else:
+                    logger.warning("Skipped adding/updating file in VDB due to embedding failure.", path=src_path_str)
+            except Exception as e: # Catch errors from VDB operations
+                logger.error("Error during VDB operation for file event", path=src_path_str, error=e, exc_info=True)
 
         elif event_type == "deleted":
             # For delete, relevance check is mainly to ensure it's within root.
@@ -238,8 +262,9 @@ class Indexer:
 
         enc = tiktoken.encoding_for_model(EMBED_MODEL) # noqa: F841
 
-        num_embedded = 0
-        num_skipped = 0
+        num_embedded_new_or_changed = 0
+        num_reused_unchanged = 0
+        num_skipped_no_embedding = 0
 
         logger.info("Build Index Processing {cnt} files", cnt=len(project_files))
 
@@ -265,19 +290,23 @@ class Indexer:
                 vector_list = self.vdb.get_vector_by_path(path_str) # Get from current self.vdb
                 if vector_list:
                     temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vector_list)
-                    num_skipped += 1
+                    num_reused_unchanged += 1
                 else: # Should not happen if maps are consistent, but as a safeguard
                     logger.warning("Could not retrieve vector for unchanged file from old VDB, re-embedding.", path=path_str)
-                    embedding_response = self._client.embeddings.create(input=text_for_embedding, model=EMBED_MODEL)
-                    vec = embedding_response.data[0].embedding
-                    temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
-                    num_embedded += 1
+                    vec = self._get_embedding(text_for_embedding)
+                    if vec:
+                        temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
+                        num_embedded_new_or_changed += 1
+                    else:
+                        num_skipped_no_embedding += 1
             else:
                 logger.debug("File new or changed, creating new embedding", path=path_str)
-                embedding_response = self._client.embeddings.create(input=text_for_embedding, model=EMBED_MODEL)
-                vec = embedding_response.data[0].embedding
-                temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
-                num_embedded += 1
+                vec = self._get_embedding(text_for_embedding)
+                if vec:
+                    temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
+                    num_embedded_new_or_changed += 1
+                else:
+                    num_skipped_no_embedding += 1
 
         self.vdb = temp_new_vdb
         self.vdb.flush()
@@ -285,15 +314,23 @@ class Indexer:
         # Rebuild dependency graph
         self.dgraph.build(project_files) # Still full rebuild for now
         logger.info("Index build complete",
-                    total_docs=len(project_files), # Use the count of actual files processed
-                    new_or_changed_docs=num_embedded,
-                    unchanged_docs=num_skipped,
+                    total_docs_processed=len(project_files),
+                    embedded_new_or_changed=num_embedded_new_or_changed,
+                    reused_unchanged=num_reused_unchanged,
+                    skipped_due_to_embedding_issues=num_skipped_no_embedding,
                     vector_db_size=self.vdb.index.ntotal,
                     dep_graph_nodes=self.dgraph.graph.number_of_nodes())
+        
+        if num_skipped_no_embedding > 0:
+            logger.warning(
+                f"{num_skipped_no_embedding} file(s) were not embedded due to issues with the OpenAI client or API. "
+                "Check previous logs for details (e.g., missing API key or API errors)."
+            )
 
     # ---------- runtime -------------------------------------------------
     def query(self, text: str, top_k: int = 5) -> list[dict]:
-        vec = self._client.embeddings.create(input=text, model=EMBED_MODEL
-                                            ).data[0].embedding
+        vec = self._get_embedding(text)
+        if vec is None:
+            logger.warning("Could not generate embedding for query. Returning empty search results.", query_text_prefix=text[:50])
+            return []
         return self.vdb.search(vec, top_k=top_k)
-    
