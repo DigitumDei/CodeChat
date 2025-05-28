@@ -5,8 +5,8 @@ FROM ${baseImage} AS prodsetup
 ENV PATH="/usr/local/bin:${PATH}"
 
 # Install git in the runtime stage as well
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,id=prodsetup_apt_cache,target=/var/cache/apt \
+    --mount=type=cache,id=prodsetup_apt_lib,target=/var/lib/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
@@ -19,8 +19,8 @@ FROM ${baseImage} AS builder
 ENV POETRY_VIRTUALENVS_CREATE=false \ 
     POETRY_VIRTUALENVS_IN_PROJECT=false
 # Use BuildKit cache mounts for apt and pip
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,id=builder_apt_cache,target=/var/cache/apt \
+    --mount=type=cache,id=builder_apt_lib,target=/var/lib/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential git python3-dev && \
