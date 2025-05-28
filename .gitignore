@@ -2,9 +2,6 @@
 # Ignore CodeChat config
 .codechat/
 
-# Ignore CodeChat config
-.codechat/
-
 # VS Code extension
 vscode-extension/CodeChat/node_modules/
 vscode-extension/CodeChat/out/
