@@ -33,9 +33,7 @@ class OpenAIProvider(ProviderInterface):
     # --- required interface --------------------------------------------
     def send(self, req: QueryRequest) -> dict:
         try:            
-            messages = self.prompt.make_chat_prompt(
-                req.history, req.message, req.provider
-            )
+            messages = self.prompt.make_chat_prompt(req)
             resp = self._client().chat.completions.create(
                 model=req.model, messages=messages
             )
@@ -62,9 +60,7 @@ class OpenAIProvider(ProviderInterface):
         async def _chunk_generator_impl() -> AsyncIterator[str]:
             loop = asyncio.get_running_loop()
             client = self._client()
-            messages_for_stream = self.prompt.make_chat_prompt(
-                req.history, req.message, req.provider
-            )
+            messages_for_stream = self.prompt.make_chat_prompt(req)
 
             # This function will run in the executor and get the next item
             # from the synchronous OpenAI stream.

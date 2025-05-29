@@ -18,7 +18,7 @@ from codechat.config import get_config, set_config
 set_config()
 indexer = Indexer()
 watcher = Watcher(indexer)
-router = LLMRouter() # router loads cfg in its ctor
+router = LLMRouter(indexer) # router loads cfg in its ctor
 
 # ---- structured logging setup ----
 setup_logging(get_config())
@@ -30,7 +30,6 @@ async def lifespan(app: FastAPI):
     # Code to run on startup
     struct_logger.info("Starting up...")
     watcher.start()
-    struct_logger.info("Filesystem watcher started", path=".")
     yield
     # Code to run on shutdown (if any)
     struct_logger.info("Shutting down...")
