@@ -16,7 +16,7 @@ class ChatMessage(BaseModel):
 
 class SnippetType(str, Enum):
     FILE = "file"
-    SNIPPET = "method"
+    METHOD = "method"
     SELECTION = "selection"
     DEP_GRAPH = "dep_graph"
 

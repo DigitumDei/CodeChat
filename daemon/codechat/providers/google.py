@@ -33,7 +33,7 @@ class GoogleProvider(ProviderInterface):
         context_parts: list[types.Part] = []
         if req.context.snippets:                
             for snippet in req.context.snippets:
-                snippet_text = f"{snippet.type}\n{snippet.content}"
+                snippet_text = f"{snippet.type.value}\n{snippet.content}"
                 context_parts.append(types.Part(text=snippet_text))
         context_parts.append(types.Part(text=req.message))
         return context_parts

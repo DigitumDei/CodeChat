@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import Optional
 from google.genai import types
 
-from codechat.models import ChatMessage, ProviderType, QueryRequest
+from codechat.models import ProviderType, QueryRequest
 import structlog 
 logger = structlog.get_logger(__name__)
 
@@ -35,7 +35,7 @@ class PromptManager:
             msgs.append({"role": "developer", "content": self.system_prompt})
 
         msgs.extend([{"role": msg.role, "content": msg.content} for msg in req.history])
-        msgs.extend([{"role": "assistant", "content": f"{snippet.type}\n{snippet.content}"} for snippet in req.context.snippets])
+        msgs.extend([{"role": "assistant", "content": f"{snippet.type.value}\n{snippet.content}"} for snippet in req.context.snippets])
 
         msgs.append({"role": "user", "content": req.message})
         return msgs
@@ -46,7 +46,7 @@ class PromptManager:
     ) -> list[dict]:
         msgs = []
         msgs.extend([{"role": msg.role, "content": msg.content} for msg in req.history])
-        # msgs.extend([{"role": "assistant", "content": f"{snippet.type}\n{snippet.content}"} for snippet in req.context.snippets])
+        msgs.extend([{"role": "assistant", "content": f"{snippet.type.value}\n{snippet.content}"} for snippet in req.context.snippets])
         msgs.append({"role": "user", "content": req.message})
         return msgs
 
