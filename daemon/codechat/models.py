@@ -43,5 +43,7 @@ class QueryRequest(BaseModel):
         description="List of prior messages exchanged"
     )
     message: str = Field(..., description="The new user message to send")
-    context: Context
-
+    context: Context = Field(
+        default_factory=Context,
+        description="Contextual information, typically added server-side"
+    )

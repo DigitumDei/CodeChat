@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import HTTPException
 from codechat.models import QueryRequest, Snippet, SnippetType
 import json # Added for yielding error JSONs
@@ -19,17 +20,33 @@ class LLMRouter:
 
         results = self.indexer.query(req.message, top_k=top_k)
         snippets: list[Snippet] = []
+        added_snippet_paths: list[str] = []
         for item in results:
-            # here I treat every hit as a “file” snippet; adapt logic if you
-            # want to distinguish code blocks vs. whole files vs. dep-graph, etc.
-            content = f"# {item['path']}\n{item['text']}"
+            #get the file content from the path here
+            try:
+                file_content = Path(item['path']).read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.warning("Could not decode file as UTF-8 during context retrieval. Skipping.", path=item['path'])
+                continue
+            except FileNotFoundError:
+                 logger.warning("File not found during context retrieval. Skipping.", path=item['path'])
+                 continue
+            except Exception as e:
+                 logger.error("Failed to read file for context", path=item['path'], error=e)
+                 continue
+                 
+            content = f"# {item['path']}\n{file_content}"
             snippets.append(
                 Snippet(
                     type=SnippetType.FILE,
                     content=content
                 )
             )
+            added_snippet_paths.append(item['path'])
+
         req.context.snippets = snippets
+        if added_snippet_paths:
+            logger.info("Context populated with snippets from paths.", paths=added_snippet_paths)
 
     def route(self, req: QueryRequest) -> dict:
         try:

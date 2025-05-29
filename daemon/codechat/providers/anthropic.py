@@ -37,7 +37,7 @@ class AnthropicProvider(ProviderInterface):
     # --- required interface --------------------------------------------
     def send(self, req: QueryRequest) -> dict:
         try:
-            messages = self.prompt.make_chat_prompt(req.history, req.message, req.provider)
+            messages = self.prompt.make_chat_prompt(req)
 
             response = self._client().messages.create(
                 model=req.model,
@@ -62,9 +62,7 @@ class AnthropicProvider(ProviderInterface):
             raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
-        messages = self.prompt.make_chat_prompt(
-            req.history, req.message, req.provider
-        )
+        messages = self.prompt.make_chat_prompt(req)
         system_prompt_content = self.prompt.get_system_prompt()
 
         # This inner function is the actual async generator

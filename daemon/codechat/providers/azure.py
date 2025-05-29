@@ -31,18 +31,14 @@ class AzureOpenAIProvider(ProviderInterface):
 
     # --- required interface --------------------------------------------
     def send(self, req: QueryRequest) -> dict:
-        messages = self.prompt.make_chat_prompt(
-            req.history, req.message, req.provider
-        )
+        messages = self.prompt.make_chat_prompt(req)
         resp = self._client().chat.completions.create(
             model=req.model, messages=messages
         )
         return resp.to_dict()
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
-        messages = self.prompt.make_chat_prompt(
-            req.history, req.message, req.provider
-        )
+        messages = self.prompt.make_chat_prompt(req)
         # This inner function is the actual async generator
         async def _chunk_generator() -> AsyncIterator[str]:
             loop = asyncio.get_running_loop()

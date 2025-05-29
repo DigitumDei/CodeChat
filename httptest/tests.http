@@ -46,10 +46,10 @@ Content-Type: application/json
 Accept: text/event-stream
 
 {
-    "provider":{{claudeprovider}}, 
-    "model":{{claude-35-haiku}}, 
+    "provider":{{geminiprovider}}, 
+    "model":{{gemini-flash-25}}, 
     "history":[], 
-    "message":"Tell me a two paragraph story."
+    "message":"what are the providers you know of in this project?"
 }
 
 
