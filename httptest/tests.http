@@ -19,8 +19,8 @@ POST  http://localhost:16005/query
 Content-Type: application/json
 
 {
-    "provider":{{geminiprovider}}, 
-    "model":{{gemini-25}}, 
+    "provider":{{claudeprovider}}, 
+    "model":{{claude-35-haiku}}, 
     "history":[{
         "role":"user",
         "content":"Hello, my name is Dion, I'm trying to test you memory."
@@ -41,13 +41,13 @@ Content-Type: application/json
 #     "message":"Tell me a two paragraph story."
 #   }'   -N   http://localhost:16005/query?stream=true
 
-POST  http://localhost:16005/query?stream=true
+POST  http://localhost:16005/query?stream=false
 Content-Type: application/json
 Accept: text/event-stream
 
 {
-    "provider":{{geminiprovider}}, 
-    "model":{{gemini-flash-25}}, 
+    "provider":{{claudeprovider}}, 
+    "model":{{claude-35-haiku}}, 
     "history":[], 
     "message":"what are the providers you know of in this project?"
 }

@@ -46,7 +46,7 @@ class PromptManager:
     ) -> list[dict]:
         msgs = []
         msgs.extend([{"role": msg.role, "content": msg.content} for msg in req.history])
-        msgs.extend([{"role": "assistant", "content": f"{snippet.type.value}\n{snippet.content}"} for snippet in req.context.snippets])
+        msgs.extend([{"role": "user", "content": f"{snippet.type.value}\n{snippet.content}"} for snippet in req.context.snippets])
         msgs.append({"role": "user", "content": req.message})
         return msgs
 

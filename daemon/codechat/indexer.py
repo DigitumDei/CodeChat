@@ -98,7 +98,14 @@ class Indexer:
             logger.debug("Path is not a file, ignoring for single event processing", path=str(file_path))
             return False
 
-        # 2. Git-based ignore check (respects .gitignore)
+        # 2. Explicitly ignore anything inside a .git directory first.
+        # This handles cases where .git directory might not be at the root of self.repo.working_dir
+        # or if self.repo.ignored() doesn't catch it as expected.
+        if any(part == ".git" for part in file_path.parts):
+            logger.debug("Path is inside a .git directory, ignoring.", path=str(file_path))
+            return False
+
+        # 3. Git-based ignore check (respects .gitignore)
         if self.repo:
             try:
                 path_relative_to_git_root = file_path.relative_to(self.repo.working_dir)
@@ -115,7 +122,7 @@ class Indexer:
             except Exception as e: # Catch other Git errors during is_ignored
                 logger.warning("Error checking if path is ignored by Git. Proceeding with non-Git checks.", path=str(file_path), error=e)
 
-        # 3. Application-specific ignore: its own cache directory (applies if not Git-ignored or no Git)
+        # 4. Application-specific ignore: its own cache directory (applies if not Git-ignored or no Git)
         if self.vdb._cache_dir.is_relative_to(self.root):
             try:
                 if file_path.is_relative_to(self.vdb._cache_dir):
@@ -124,7 +131,7 @@ class Indexer:
             except ValueError:
                 pass # file_path is not in cache_dir, or cache_dir is not under self.root
 
-        # 4. Fallback non-Git ignore check for common directories (if self.repo is None or Git check fell through/failed)
+        # 5. Fallback non-Git ignore check for common directories (if self.repo is None or Git check fell through/failed)
         # Common ignored directory names/prefixes
         ignored_dir_components = {".venv", "__pycache__", ".hg", ".svn", "node_modules", "build", "dist", "target"}
         # .git directory itself should also be ignored if not using Git for filtering
