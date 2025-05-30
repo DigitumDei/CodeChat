@@ -74,8 +74,8 @@ def test_format_anthropic(default_manager, sample_history, sample_instruction):
     expected = [
         {"role": "user", "content": "Previous question"},
         {"role": "assistant", "content": "Previous answer"},        
-        {"role": "assistant", "content": "file\nFile content 1"},
-        {"role": "assistant", "content": "method\nMethod content 2"},
+        {"role": "user", "content": "file\nFile content 1"},
+        {"role": "user", "content": "method\nMethod content 2"},
         {"role": "user", "content": "Current question"},
     ]
     # Note: The system prompt might be passed separately to the Anthropic client
@@ -83,8 +83,8 @@ def test_format_anthropic(default_manager, sample_history, sample_instruction):
 
 def test_format_anthropic_no_history(default_manager, sample_instruction):
     expected = [        
-        {"role": "assistant", "content": "file\nFile content 1"},
-        {"role": "assistant", "content": "method\nMethod content 2"},
+        {"role": "user", "content": "file\nFile content 1"},
+        {"role": "user", "content": "method\nMethod content 2"},
         {"role": "user", "content": "Current question"},
     ]
     assert default_manager._format_anthropic(sample_query_request([], sample_instruction)) == expected
