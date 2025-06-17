@@ -41,15 +41,16 @@ Content-Type: application/json
 #     "message":"Tell me a two paragraph story."
 #   }'   -N   http://localhost:16005/query?stream=true
 
-POST  http://localhost:16005/query?stream=false
+POST  http://localhost:16005/query?stream=true
 Content-Type: application/json
 Accept: text/event-stream
 
 {
     "provider":{{claudeprovider}}, 
-    "model":{{claude-35-haiku}}, 
+    "model":{{claude-37}}, 
     "history":[], 
-    "message":"what are the providers you know of in this project?"
+    "message":"In lmm_router.py, who calls def route(self, req: QueryRequest) and where does that get routed to?",
+    "files":["/workspace/daemon/codechat/llm_router.py"]
 }
 
 

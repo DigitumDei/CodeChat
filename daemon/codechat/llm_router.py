@@ -1,7 +1,7 @@
 from pathlib import Path
 from fastapi import HTTPException
 from codechat.models import QueryRequest, Snippet, SnippetType
-import json # Added for yielding error JSONs
+import json 
 from codechat.providers import get as get_provider
 from codechat.indexer import Indexer # Import Indexer
 
@@ -13,40 +13,55 @@ class LLMRouter:
         self.indexer = indexer
         from codechat import providers  # noqa: F401 auto‑import side‑effects
 
+    def _create_snippet_from_file_path(self, file_path_str: str, source_description: str) -> Snippet | None:
+        """
+        Reads a file and creates a Snippet object.
+        Returns None if the file cannot be read or processed.
+        """
+        try:
+            file_path_obj = Path(file_path_str)
+            file_content = file_path_obj.read_text(encoding="utf-8")
+            # Using file_path_str for the original path as provided
+            content = f"# File: {file_path_obj.name}\n# Path: {file_path_str}\n\n{file_content}"
+            return Snippet(type=SnippetType.FILE, content=content)
+        except UnicodeDecodeError:
+            logger.warning(f"Could not decode {source_description} file as UTF-8. Skipping.", path=file_path_str)
+        except FileNotFoundError:
+            logger.warning(f"{source_description.capitalize()} file not found. Skipping.", path=file_path_str)
+        except Exception as e:
+            logger.error(f"Failed to read {source_description} file for context", path=file_path_str, error=e)
+        return None
+
     def _ensure_context(self, req: QueryRequest, top_k: int = 5) -> None:
         # only populate once
         if req.context.snippets:
             return
 
-        results = self.indexer.query(req.message, top_k=top_k)
         snippets: list[Snippet] = []
-        added_snippet_paths: list[str] = []
-        for item in results:
-            #get the file content from the path here
-            try:
-                file_content = Path(item['path']).read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                logger.warning("Could not decode file as UTF-8 during context retrieval. Skipping.", path=item['path'])
-                continue
-            except FileNotFoundError:
-                 logger.warning("File not found during context retrieval. Skipping.", path=item['path'])
-                 continue
-            except Exception as e:
-                 logger.error("Failed to read file for context", path=item['path'], error=e)
-                 continue
-                 
-            content = f"# {item['path']}\n{file_content}"
-            snippets.append(
-                Snippet(
-                    type=SnippetType.FILE,
-                    content=content
-                )
-            )
-            added_snippet_paths.append(item['path'])
+        processed_snippet_paths: list[str] = [] # Renamed for clarity
+        context_source = "unknown"
+
+        if req.files and len(req.files) > 0:
+            logger.info("Client provided specific files for context.", client_files=req.files)
+            context_source = "client_files"
+            for file_path_str in req.files:
+                snippet = self._create_snippet_from_file_path(file_path_str, "client-specified")
+                if snippet:
+                    snippets.append(snippet)
+                    processed_snippet_paths.append(file_path_str)
+        else:
+            logger.info("No client files provided for context, querying VDB.")
+            context_source = "vdb_query"
+            results = self.indexer.query(req.message, top_k=top_k)
+            for item in results:
+                snippet = self._create_snippet_from_file_path(item['path'], "VDB")
+                if snippet:
+                    snippets.append(snippet)
+                    processed_snippet_paths.append(item['path'])
 
         req.context.snippets = snippets
-        if added_snippet_paths:
-            logger.info("Context populated with snippets from paths.", paths=added_snippet_paths)
+        if processed_snippet_paths:
+            logger.info("Context populated with snippets.", paths=processed_snippet_paths, source=context_source)
 
     def route(self, req: QueryRequest) -> dict:
         try:

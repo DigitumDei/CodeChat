@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import List, Literal 
-from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field 
 
 class ProviderType(str, Enum):
     OPENAI    = "openai"
@@ -46,4 +46,8 @@ class QueryRequest(BaseModel):
     context: Context = Field(
         default_factory=Context,
         description="Contextual information, typically added server-side"
+    )
+    files: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of file paths relevant to the query, provided by the client"
     )
