@@ -161,7 +161,10 @@ class Indexer:
                 return
 
             current_hash = hashlib.sha256(full_text_content.encode('utf-8')).hexdigest()
-            text_for_embedding = full_text_content[:MAX_CHARS]
+            # Prepending filename might provide a little more context for the embedding model.
+            # Ensure MAX_CHARS is respected for the content part.
+            header = f"File content for: {src_path.name}\nOriginal Path: {src_path_str}\n\n---\n\n"
+            text_for_embedding = header + full_text_content[:MAX_CHARS - len(header)]
             existing_meta = self.vdb.get_meta_by_path(src_path_str)
 
             if existing_meta and existing_meta.get('hash') == current_hash:
@@ -288,8 +291,10 @@ class Indexer:
                 continue
 
             current_hash = hashlib.sha256(full_text_content.encode('utf-8')).hexdigest()
-            text_for_embedding = full_text_content[:MAX_CHARS]
-
+            # Prepending filename might provide a little more context for the embedding model.
+            # Ensure MAX_CHARS is respected for the content part.
+            header = f"File content for: {file_path.name}\nOriginal Path: {path_str}\n\n---\n\n"
+            text_for_embedding = header + full_text_content[:MAX_CHARS - len(header)]
             old_meta_item = old_vdb_snapshot.get(path_str) # Use the snapshot
 
             if old_meta_item and old_meta_item.get('hash') == current_hash:
