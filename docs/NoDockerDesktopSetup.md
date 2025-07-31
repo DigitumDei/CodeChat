@@ -31,6 +31,7 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
 
 # Test Docker installation
 sudo docker run hello-world
+
 ```
 
 ```bash
@@ -72,10 +73,23 @@ iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
 choco install docker-cli -y
 choco install docker-compose -y
 
+curl -L "https://github.com/docker/buildx/releases/download/v0.26.1/buildx-v0.26.1.windows-amd64.exe" -o C:/ProgramData/Docker/cli-plugins/docker-buildx.exe
+
+# Remove Docker Desktop credential helper configuration
+# Edit or create config.json and remove "credsStore": "desktop" entry
+notepad $env:USERPROFILE\.docker\config.json
+
 # Configure PowerShell profile to set Docker host
 notepad $PROFILE
-# Add the following line to the profile:
+# Add the following lines to the profile:
 $Env:DOCKER_HOST = 'tcp://localhost:2375'
+$Env:DOCKER_BUILDKIT = '1'
+$Env:COMPOSE_CONVERT_WINDOWS_PATHS = '1'
+
+# Note: If path conversion issues occur with relative paths in docker-compose.yml,
+# modify the codechat.ps1 script to call WSL's docker compose instead:
+# wsl docker compose -f .codechat/docker-compose.yml up --build -d
+# This ensures proper Unix path handling by the WSL Docker daemon
 ```
 
 ## VS Code Setup
