@@ -180,26 +180,23 @@ class DepGraph:
         lang_obj = LANGUAGES[lang_name]
         query_obj = QUERIES[lang_name]
         extractor_fn = EXTRACTORS[lang_name]
-        # capture_name_to_match = LANGUAGE_DEFINITIONS[lang_name]["capture_name"] # Not strictly needed if query only has one named capture for deps
 
         self.parser.language = Language(lang_obj)
 
         try:
             content_bytes = path.read_bytes()
             tree = self.parser.parse(content_bytes)
-            captures = query_obj.captures(tree.root_node)
+            captures_dict = query_obj.captures(tree.root_node)
 
-            for node, capture_name_from_query in captures:  # type: ignore[misc]
-                node = cast(Node, node)  # type: ignore[has-type]
-                # We assume the query is designed such that any @capture is a dependency string
-                # For more complex queries with multiple capture names, filter by capture_name_to_match
-                if node.text:
-                    raw_text = node.text.decode("utf-8", errors="replace")
-                else:
-                    continue
-                dep_identifier = extractor_fn(raw_text)
-                if dep_identifier:
-                    deps.add(dep_identifier)
+            # Per the type hint, captures() returns a dict: {capture_name: [nodes...]}
+            # We iterate through all key-value pairs and process all nodes found.
+            for _capture_name, captured_nodes in captures_dict.items():
+                for node in captured_nodes:
+                    if node.text:
+                        raw_text = node.text.decode("utf-8", errors="replace")
+                        dep_identifier = extractor_fn(raw_text)
+                        if dep_identifier:
+                            deps.add(dep_identifier)
         except FileNotFoundError:
             logger.warning("File not found during import parsing.", path=str(path), lang=lang_name)
         except Exception as e:
