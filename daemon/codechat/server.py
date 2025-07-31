@@ -1,4 +1,3 @@
-# h:\SourceCode\CodeChat\daemon\codechat\server.py
 from contextlib import asynccontextmanager
 import json
 from fastapi import FastAPI, Query

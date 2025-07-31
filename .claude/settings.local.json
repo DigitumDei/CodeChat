@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh.exe issue list --state open)",
+      "Bash(sudo rm:*)",
+      "Bash(sudo service:*)"
+    ],
+    "deny": []
+  }
+}
