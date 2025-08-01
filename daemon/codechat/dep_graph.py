@@ -191,9 +191,10 @@ class DepGraph:
             # Per the type hint, captures() returns a dict: {capture_name: [nodes...]}
             # We iterate through all key-value pairs and process all nodes found.
             for _capture_name, captured_nodes in captures_dict.items():
+                logger.info("Captured: " ,_capture_name)
                 for node in captured_nodes:
                     if node.text:
-                        raw_text = node.text.decode("utf-8", errors="replace")
+                        raw_text = node.text.decode("utf-8", errors="replace")                        
                         dep_identifier = extractor_fn(raw_text)
                         if dep_identifier:
                             deps.add(dep_identifier)
