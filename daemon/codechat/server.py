@@ -1,4 +1,3 @@
-# h:\SourceCode\CodeChat\daemon\codechat\server.py
 from contextlib import asynccontextmanager
 import json
 from fastapi import FastAPI, Query
@@ -70,7 +69,7 @@ async def reload_config():
     """
     logger = structlog.get_logger("server.reload_config")
     try:
-        logger.info("Reloading configuration...")
+        logger.info("Reloading configuration.")
         set_config() # Call set_config on the existing instance
         logger.info("Configuration reloaded.")
         return {"message": "Configuration reloaded successfully"}

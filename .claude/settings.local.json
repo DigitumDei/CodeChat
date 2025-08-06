@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh.exe issue list --state open)",
+      "Bash(sudo rm:*)",
+      "Bash(sudo service:*)",
+      "Bash(/home/coolmac/.local/bin/poetry run mypy codechat)"
+    ],
+    "deny": []
+  }
+}
