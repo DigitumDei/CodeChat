@@ -121,4 +121,3 @@ Pluggable backends supporting:
 - File watching uses `watchdog` library for cross-platform compatibility
 - Git integration available when GitPython is installed (optional dependency)
 - Structured logging via `structlog` throughout the daemon
-- **Git Commands**: When using git commands in WSL/Linux environment, use `git.exe` instead of `git` to ensure proper integration with Windows Git credentials
