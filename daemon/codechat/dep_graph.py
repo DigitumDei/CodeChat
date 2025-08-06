@@ -3,10 +3,10 @@ import pathlib
 import networkx as nx
 import structlog
 
-from tree_sitter import Parser, Language, Query, Node
+from tree_sitter import Parser, Language, Query
 from tree_sitter_languages import get_language
 
-from typing import Callable, Dict, Set, Optional, cast
+from typing import Callable, Dict, Set, Optional
 
 logger = structlog.get_logger(__name__)
 
