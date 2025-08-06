@@ -4,7 +4,13 @@
       "Bash(gh.exe issue list --state open)",
       "Bash(sudo rm:*)",
       "Bash(sudo service:*)",
-      "Bash(/home/coolmac/.local/bin/poetry run mypy codechat)"
+      "Bash(/home/coolmac/.local/bin/poetry run mypy codechat)",
+      "Bash(gh.exe issue create:*)",
+      "Bash(gh.exe issue comment:*)",
+      "Bash(gh.exe issue close 44 --repo DigitumDei/CodeChat --comment \"Analysis completed. All key architectural details documented above. Ready to proceed with sidebar implementation.\")",
+      "Bash(npm run compile:*)",
+      "Bash(gh.exe issue close 46 --repo DigitumDei/CodeChat --comment \"Enhanced UI implementation complete! Professional chat interface with modern design, animations, and VS Code theme integration.\")",
+      "Bash(gh.exe issue close 47 --repo DigitumDei/CodeChat --comment \"File selection implementation complete! Users can now attach specific files to their chat context using VS Code''s native file picker.\")"
     ],
     "deny": []
   }

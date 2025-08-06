@@ -39,13 +39,22 @@
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codechat",
+          "title": "CodeChat",
+          "icon": "media/codechat-icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "codechat": [
         {
           "id": "codechat.chat",
           "type": "webview",
-          "name": "CodeChat Chat",
-          "icon": "chat"
+          "name": "Chat",
+          "icon": "comment-discussion"
         }
       ]
     }
