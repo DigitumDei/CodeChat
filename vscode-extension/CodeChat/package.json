@@ -26,7 +26,22 @@
       {
         "command": "codechat.helloWorld",
         "title": "Hello World"
-      }      
+      },
+      {
+        "command": "codechat.openChat",
+        "title": "CodeChat: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "codechat.clearHistory",
+        "title": "CodeChat: Clear Chat History",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "codechat.askAboutFile",
+        "title": "CodeChat: Ask about this file",
+        "icon": "$(question)"
+      }
     ],
     "configuration": {
       "type": "object",
@@ -55,6 +70,41 @@
           "type": "webview",
           "name": "Chat",
           "icon": "comment-discussion"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codechat.askAboutFile",
+          "when": "editorTextFocus",
+          "group": "9_cutcopypaste"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "codechat.askAboutFile",
+          "when": "resourceExtname",
+          "group": "2_workspace"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "codechat.clearHistory",
+          "when": "view == codechat.chat",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codechat.openChat"
+        },
+        {
+          "command": "codechat.clearHistory"
+        },
+        {
+          "command": "codechat.askAboutFile",
+          "when": "editorIsOpen"
         }
       ]
     }

@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
     () => vscode.window.showInformationMessage('CodeChat extension wired up!'));
   context.subscriptions.push(disposable);
 
-		// 5) register “open settings” command
+		// 5) register "open settings" command
   const openSettings = vscode.commands.registerCommand(
     'codechat.openSettings',  
     () => {
@@ -62,12 +62,51 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(openSettings);
 
+  // 6) register "open chat" command
+  const openChat = vscode.commands.registerCommand(
+    'codechat.openChat',
+    () => {
+      vscode.commands.executeCommand('codechat.chat.focus');
+    }
+  );
+  context.subscriptions.push(openChat);
+
+  // 7) register "clear history" command  
+  const clearHistory = vscode.commands.registerCommand(
+    'codechat.clearHistory',
+    () => {
+      context.workspaceState.update('chatHistory', []);
+      vscode.window.showInformationMessage('CodeChat: Chat history cleared');
+    }
+  );
+  context.subscriptions.push(clearHistory);
+
   console.log('🔌 CodeChat extension activated');
+  
+  // Create the chat view provider instance so we can reference it
+  const chatProvider = new ChatViewProvider(context);
+  
+  // 8) register "ask about file" command
+  const askAboutFile = vscode.commands.registerCommand(
+    'codechat.askAboutFile',
+    async (uri?: vscode.Uri) => {
+      const fileUri = uri || vscode.window.activeTextEditor?.document.uri;
+      if (!fileUri) {
+        vscode.window.showWarningMessage('No file selected');
+        return;
+      }
+      
+      // Add the file to chat and focus the view
+      chatProvider.addFileToChat(fileUri.fsPath);
+      vscode.commands.executeCommand('codechat.chat.focus');
+    }
+  );
+  context.subscriptions.push(askAboutFile);
   
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       'codechat.chat',
-      new ChatViewProvider(context),
+      chatProvider,
       {
         // so that your React/vanilla bundle survives when hidden
         webviewOptions: { retainContextWhenHidden: true }
@@ -77,12 +116,15 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 class ChatViewProvider implements vscode.WebviewViewProvider {
+  private _view?: vscode.WebviewView;
+  
   constructor(private ctx: vscode.ExtensionContext) {}
 
   public resolveWebviewView(
     view: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext
   ) {
+    this._view = view;
     view.webview.options = {
       enableScripts: true
     };
@@ -372,6 +414,112 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
           #attached-files:empty {
             display: none;
           }
+          
+          /* Markdown formatting styles */
+          .message-bubble h1, .message-bubble h2, .message-bubble h3 {
+            margin: 12px 0 8px 0;
+            line-height: 1.3;
+          }
+          
+          .message-bubble h1 { font-size: 20px; font-weight: 700; }
+          .message-bubble h2 { font-size: 18px; font-weight: 600; }
+          .message-bubble h3 { font-size: 16px; font-weight: 600; }
+          
+          .message-bubble strong { font-weight: 600; }
+          .message-bubble em { font-style: italic; }
+          
+          .message-bubble ul {
+            margin: 8px 0;
+            padding-left: 20px;
+          }
+          
+          .message-bubble li {
+            margin: 4px 0;
+            line-height: 1.4;
+          }
+          
+          .message-bubble a {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: none;
+          }
+          
+          .message-bubble a:hover {
+            text-decoration: underline;
+          }
+          
+          .inline-code {
+            background: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-editor-foreground);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: var(--vscode-editor-font-family, 'Monaco', 'Consolas', monospace);
+            font-size: 0.9em;
+          }
+          
+          .code-block {
+            margin: 12px 0;
+            border: 1px solid var(--vscode-chat-border);
+            border-radius: 6px;
+            background: var(--vscode-textCodeBlock-background);
+            overflow: hidden;
+          }
+          
+          .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--vscode-editor-background);
+            border-bottom: 1px solid var(--vscode-chat-border);
+            font-size: 12px;
+          }
+          
+          .code-lang {
+            color: var(--vscode-editor-foreground);
+            font-weight: 500;
+            opacity: 0.8;
+          }
+          
+          .code-content {
+            margin: 0;
+            padding: 12px;
+            background: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-editor-foreground);
+            font-family: var(--vscode-editor-font-family, 'Monaco', 'Consolas', monospace);
+            font-size: 13px;
+            line-height: 1.4;
+            overflow-x: auto;
+          }
+          
+          .code-content code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            font-family: inherit;
+          }
+          
+          .copy-btn, .copy-code-btn {
+            background: none;
+            border: none;
+            color: var(--vscode-editor-foreground);
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            opacity: 0.6;
+            transition: opacity 0.15s ease, background-color 0.15s ease;
+          }
+          
+          .copy-btn:hover, .copy-code-btn:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.1);
+          }
+          
+          .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
         </style>
       </head>
       <body>
@@ -415,7 +563,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
               const messageClass = m.role === 'user' ? 'user' : 'assistant';
               const header = m.role === 'user' ? 'You' : 'CodeChat';
               
-              let content = escapeHtml(m.content);
+              let content = m.role === 'assistant' ? formatMarkdown(m.content) : escapeHtml(m.content);
               if (m.role === 'assistant' && m.isPartial) {
                 content += \`
                   <div class="loading">
@@ -430,7 +578,10 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
               
               return \`
                 <div class="message \${messageClass}">
-                  <div class="message-header">\${header}</div>
+                  <div class="message-header">
+                    \${header}
+                    \${m.role === 'assistant' ? '<button class="copy-btn" onclick="copyMessage(\`' + escapeHtml(m.content).replace(/\`/g, '\\\`') + '\`)" title="Copy message">📋</button>' : ''}
+                  </div>
                   <div class="message-bubble">\${content}</div>
                 </div>
               \`;
@@ -445,6 +596,110 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
             return div.innerHTML;
           }
 
+          function formatMarkdown(text) {
+            if (!text) return '';
+            
+            let html = escapeHtml(text);
+            
+            // Code blocks with syntax highlighting  
+            html = html.replace(/\`\`\`(\\w+)?\\n([\\s\\S]*?)\\n\`\`\`/g, (match, lang, code) => {
+              const language = lang || 'text';
+              const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+              // Store the code content in a data attribute instead of onclick parameter
+              return '<div class="code-block">' +
+                '<div class="code-header">' +
+                  '<span class="code-lang">' + language + '</span>' +
+                  '<button class="copy-code-btn" data-code="' + escapeHtml(code) + '" onclick="copyCodeFromButton(this)" title="Copy code">📋</button>' +
+                '</div>' +
+                '<pre class="code-content"><code class="language-' + language + '">' + code + '</code></pre>' +
+              '</div>';
+            });
+            
+            // Inline code
+            html = html.replace(/\`([^\`]+)\`/g, '<code class="inline-code">$1</code>');
+            
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            
+            // Bold and italic
+            html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
+            html = html.replace(/\\*(.*?)\\*/g, '<em>$1</em>');
+            
+            // Lists
+            html = html.replace(/^\\* (.*$)/gim, '<li>$1</li>');
+            html = html.replace(/^\\d+\\. (.*$)/gim, '<li>$1</li>');
+            
+            // Wrap consecutive <li> elements in <ul>
+            html = html.replace(/((<li>.*<\\/li>\\s*)+)/g, '<ul>$1</ul>');
+            
+            // Links
+            html = html.replace(/\\[([^\\]]+)\\]\\(([^\\)]+)\\)/g, '<a href="$2" target="_blank">$1</a>');
+            
+            // Line breaks
+            html = html.replace(/\\n/g, '<br>');
+            
+            return html;
+          }
+
+          function copyMessage(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(() => {
+                console.log('Message copied to clipboard');
+              }).catch(err => {
+                console.error('Failed to copy message:', err);
+                fallbackCopyTextToClipboard(text);
+              });
+            } else {
+              fallbackCopyTextToClipboard(text);
+            }
+          }
+
+          function copyCode(code, buttonEl) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(code).then(() => {
+                const originalText = buttonEl.innerHTML;
+                buttonEl.innerHTML = '✅';
+                setTimeout(() => {
+                  buttonEl.innerHTML = originalText;
+                }, 2000);
+              }).catch(err => {
+                console.error('Failed to copy code:', err);
+                fallbackCopyTextToClipboard(code);
+              });
+            } else {
+              fallbackCopyTextToClipboard(code);
+            }
+          }
+
+          function copyCodeFromButton(buttonEl) {
+            const code = buttonEl.getAttribute('data-code');
+            if (code) {
+              copyCode(code, buttonEl);
+            }
+          }
+
+          function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+              const successful = document.execCommand('copy');
+              if (successful) {
+                console.log('Fallback: Text copied to clipboard');
+              }
+            } catch (err) {
+              console.error('Fallback: Unable to copy text', err);
+            }
+            document.body.removeChild(textArea);
+          }
+
           function setLoading(loading) {
             isLoading = loading;
             sendBtn.disabled = loading;
@@ -457,16 +712,21 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
           }
 
           function renderAttachedFiles() {
-            attachedFilesEl.innerHTML = attachedFiles.map(file => \`
+            attachedFilesEl.innerHTML = attachedFiles.map((file, index) => \`
               <div class="file-tag">
                 <span class="filename" title="\${file}">\${file.split('/').pop()}</span>
-                <span class="remove" onclick="removeFile('\${file}')" title="Remove file">×</span>
+                <span class="remove" onclick="removeFileByIndex(\${index})" title="Remove file">×</span>
               </div>
             \`).join('');
           }
 
           function removeFile(filePath) {
             attachedFiles = attachedFiles.filter(f => f !== filePath);
+            renderAttachedFiles();
+          }
+
+          function removeFileByIndex(index) {
+            attachedFiles.splice(index, 1);
             renderAttachedFiles();
           }
 
@@ -533,8 +793,12 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
             }
           });
 
-          // Expose removeFile function globally for onclick handlers
+          // Expose functions globally for onclick handlers
           window.removeFile = removeFile;
+          window.removeFileByIndex = removeFileByIndex;
+          window.copyMessage = copyMessage;
+          window.copyCode = copyCode;
+          window.copyCodeFromButton = copyCodeFromButton;
 
           // Initial render
           render();
@@ -575,13 +839,42 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('codechat');
     const daemonUrl = config.get<string>('daemonUrl') || 'http://localhost:16005';
 
+    // Convert local file paths to daemon container paths
+    let containerFiles: string[] | undefined;
+    if (files && files.length > 0) {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (workspaceRoot) {
+        containerFiles = files.map(filePath => {
+          // Convert absolute local path to relative path from workspace root
+          let relativePath = vscode.workspace.asRelativePath(filePath);
+          
+          // Normalize path separators to forward slashes for container
+          relativePath = relativePath.replace(/\\\\/g, '/');
+          
+          // Remove any remaining drive letters (Windows)
+          relativePath = relativePath.replace(/^[a-zA-Z]:/, '');
+          
+          // Ensure it starts with a clean path
+          if (relativePath.startsWith('/')) {
+            relativePath = relativePath.substring(1);
+          }
+          
+          // Convert to container path (mounted at /workspace)
+          return `/workspace/${relativePath}`;
+        });
+      } else {
+        // Fallback if no workspace folder
+        containerFiles = files;
+      }
+    }
+
     // Build your QueryRequest
     const body = {
       provider: 'openai',
       model: 'o4-mini',
       history: [],    // you could load and pass previous history here
       message: text,
-      files: files    // Send files array to backend
+      files: containerFiles    // Send container-accessible paths to backend
     };
 
     const res = await fetch(`${daemonUrl}/query`, {
@@ -601,7 +894,9 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       assistantText += decoder.decode(value, { stream: true });
       view.show?.(true);
       view.webview.postMessage({ 
@@ -625,6 +920,16 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       'chatHistory',
       updated.slice(-50)
     );
+  }
+
+  public addFileToChat(filePath: string) {
+    if (this._view) {
+      this._view.webview.postMessage({
+        command: 'filesSelected',
+        files: [filePath]
+      });
+      this._view.show?.(true);
+    }
   }
 }
 
