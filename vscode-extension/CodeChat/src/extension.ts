@@ -580,12 +580,28 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
                 <div class="message \${messageClass}">
                   <div class="message-header">
                     \${header}
-                    \${m.role === 'assistant' ? '<button class="copy-btn" onclick="copyMessage(\`' + escapeHtml(m.content).replace(/\`/g, '\\\`') + '\`)" title="Copy message">📋</button>' : ''}
+                    \${m.role === 'assistant' ? '<button class="copy-btn" data-message="' + escapeHtml(m.content).replace(/"/g, '&quot;') + '" title="Copy message">📋</button>' : ''}
                   </div>
                   <div class="message-bubble">\${content}</div>
                 </div>
               \`;
             }).join('');
+            
+            // Add event listeners for copy buttons after rendering
+            histEl.querySelectorAll('.copy-btn').forEach(btn => {
+              btn.addEventListener('click', (e) => {
+                const message = e.target.getAttribute('data-message');
+                if (message) {
+                  copyMessage(message);
+                }
+              });
+            });
+            
+            histEl.querySelectorAll('.copy-code-btn').forEach(btn => {
+              btn.addEventListener('click', (e) => {
+                copyCodeFromButton(e.target);
+              });
+            });
             
             histEl.scrollTop = histEl.scrollHeight;
           }
@@ -609,7 +625,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
               return '<div class="code-block">' +
                 '<div class="code-header">' +
                   '<span class="code-lang">' + language + '</span>' +
-                  '<button class="copy-code-btn" data-code="' + escapeHtml(code) + '" onclick="copyCodeFromButton(this)" title="Copy code">📋</button>' +
+                  '<button class="copy-code-btn" data-code="' + escapeHtml(code) + '" title="Copy code">📋</button>' +
                 '</div>' +
                 '<pre class="code-content"><code class="language-' + language + '">' + code + '</code></pre>' +
               '</div>';
@@ -715,9 +731,17 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
             attachedFilesEl.innerHTML = attachedFiles.map((file, index) => \`
               <div class="file-tag">
                 <span class="filename" title="\${file}">\${file.split('/').pop()}</span>
-                <span class="remove" onclick="removeFileByIndex(\${index})" title="Remove file">×</span>
+                <span class="remove" data-index="\${index}" title="Remove file">×</span>
               </div>
             \`).join('');
+            
+            // Add event listeners for remove buttons
+            attachedFilesEl.querySelectorAll('.remove').forEach(btn => {
+              btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.getAttribute('data-index'));
+                removeFileByIndex(index);
+              });
+            });
           }
 
           function removeFile(filePath) {
