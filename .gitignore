@@ -1,6 +1,7 @@
 
 # Ignore CodeChat config
 .codechat/
+.claude/settings.local.json
 
 # VS Code extension
 vscode-extension/CodeChat/node_modules/
