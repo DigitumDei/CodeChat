@@ -4,7 +4,8 @@ import networkx as nx
 import structlog
 
 from tree_sitter import Parser, Language, Query
-from tree_sitter_languages import get_language
+from tree_sitter_language_pack import get_language
+from typing import cast, Any
 
 from typing import Callable, Dict, Set, Optional
 
@@ -53,8 +54,11 @@ LANGUAGE_DEFINITIONS = {
     "python": {
         "suffixes": [".py"],
         "query_str": """
-            (import_statement name: (dotted_name) @module)
-            (import_from_statement module_name: (dotted_name) @module)
+            [
+              (import_statement name: (dotted_name) @module)
+              (import_statement (aliased_import name: (dotted_name) @module))
+              (import_from_statement module_name: (dotted_name) @module)
+            ]
         """,
         "extractor": _extract_python_dep,
         "capture_name": "@module"
@@ -90,9 +94,9 @@ LANGUAGE_DEFINITIONS = {
         "extractor": _extract_js_ts_dep,
         "capture_name": "@path"
     },
-    "c_sharp": {
+    "csharp": {
         "suffixes": [".cs"],
-        "query_str": "(using_directive name: (qualified_name) @namespace)",
+        "query_str": "(using_directive (qualified_name) @namespace)",
         "extractor": _extract_csharp_dep,
         "capture_name": "@namespace"
     },
@@ -132,7 +136,10 @@ LANGUAGE_DEFINITIONS = {
     "css": {
         "suffixes": [".css"],
         "query_str": """
-            (import_statement [ (string_literal) @path (call_expression function: (identifier) @_fn (#eq? @_fn "url") arguments: (arguments (string_literal) @path))])
+            [
+              (import_statement (string_value) @path)
+              (import_statement (call_expression (arguments (string_value) @path)))
+            ]
         """,
         "extractor": _extract_html_css_link_dep,
         "capture_name": "@path"
@@ -142,74 +149,273 @@ LANGUAGE_DEFINITIONS = {
 def _initialize_language_configs():
     for lang_name, config in LANGUAGE_DEFINITIONS.items():
         try:
-            lang_obj = get_language(lang_name)
+            # get_language() requires the language name as argument
+            # Cast to Any to avoid type checker issues with dynamic strings
+            lang_obj = get_language(cast(Any, lang_name))
             LANGUAGES[lang_name] = lang_obj
-            QUERIES[lang_name] = lang_obj.query(config["query_str"])
+            
+            # The Query constructor issue - try both patterns
+            try:
+                # Try language.query(string) first (most likely correct)
+                query_obj = lang_obj.query(config["query_str"])
+            except AttributeError:
+                # Fallback to Query(language, string) if lang_obj doesn't have query method
+                query_obj = Query(lang_obj, config["query_str"])
+            
+            QUERIES[lang_name] = query_obj
             EXTRACTORS[lang_name] = config["extractor"]
             for suffix in config["suffixes"]:
                 SUFFIX_TO_LANG[suffix] = lang_name
+                
+            logger.info("Successfully initialized language config", language=lang_name)
+            
         except Exception as e:
-            logger.error("Failed to initialize language config", language=lang_name, error=str(e))
+            logger.error("Failed to initialize language config", language=lang_name, error=str(e), exc_info=True)
 
 _initialize_language_configs()
 
 class DepGraph:
-    """Builds a directed graph of `file_identifier -> dependency_identifier` edges."""
-    def __init__(self):
+    """Builds a directed graph of local file dependencies where edges represent import relationships."""
+    def __init__(self, project_root: Optional[pathlib.Path] = None):
         self.graph = nx.DiGraph()
         self.parser = Parser()
+        self.project_root = project_root
+        self.file_map: Dict[str, pathlib.Path] = {}  # Maps file stems to full paths
+        self.import_cache: Dict[str, Set[pathlib.Path]] = {}  # Cache for import resolution
 
     def build(self, files: list[pathlib.Path]) -> None:
+        """Build a dependency graph of local file relationships."""
         self.graph.clear()
+        self.file_map.clear()
+        self.import_cache.clear()
+        
+        # Infer project root if not provided
+        if self.project_root is None and files:
+            self.project_root = self._infer_project_root(files)
+        
+        # Build file mapping: stem -> full path
         for path in files:
-            file_identifier = path.stem  # Node identifier based on file stem
-            self.graph.add_node(file_identifier) # Add node even if no imports found/parsed
-            imports = self._imports(path)
-            for dep_identifier in imports:
-                self.graph.add_edge(file_identifier, dep_identifier)
-        logger.info("Dependency graph built.", nodes=self.graph.number_of_nodes(), edges=self.graph.number_of_edges())
+            file_stem = path.stem
+            self.file_map[file_stem] = path
+            self.graph.add_node(file_stem)
+        
+        logger.debug("File map built", 
+                    total_files=len(self.file_map),
+                    sample_stems=list(self.file_map.keys())[:10])
+        
+        # Build file-to-file dependencies
+        for path in files:
+            file_stem = path.stem
+            logger.debug("Processing file for dependencies", file=str(path), stem=file_stem)
+            
+            local_dependencies = self._resolve_local_imports(path)
+            logger.debug("Found local dependencies", file=file_stem, dependencies=[d.stem for d in local_dependencies])
+            
+            for dep_path in local_dependencies:
+                dep_stem = dep_path.stem
+                if dep_stem in self.file_map:  # Only add edges for files in our project
+                    self.graph.add_edge(file_stem, dep_stem)
+                    logger.debug("Added edge", from_file=file_stem, to_file=dep_stem)
+                else:
+                    logger.debug("Skipped dependency (not in file_map)", dep=dep_stem)
+                    
+        logger.info("Local dependency graph built.", 
+                   nodes=self.graph.number_of_nodes(), 
+                   edges=self.graph.number_of_edges(),
+                   project_root=str(self.project_root))
 
     # ---------- helpers -------------------------------------------------
-    def _imports(self, path: pathlib.Path) -> set[str]:
-        deps: Set[str] = set()
+    def _infer_project_root(self, files: list[pathlib.Path]) -> pathlib.Path:
+        """Infer project root by finding common parent directory."""
+        if not files:
+            return pathlib.Path.cwd()
+        
+        # Find common parent of all files
+        common_parent = files[0].parent
+        for file_path in files[1:]:
+            try:
+                common_parent = pathlib.Path(*common_parent.parts[:len(file_path.relative_to(common_parent).parts)])
+            except ValueError:
+                # Files don't share common path, try parent
+                while common_parent != common_parent.parent:
+                    try:
+                        file_path.relative_to(common_parent)
+                        break
+                    except ValueError:
+                        common_parent = common_parent.parent
+        
+        return common_parent
+
+    def _resolve_local_imports(self, file_path: pathlib.Path) -> Set[pathlib.Path]:
+        """Resolve imports in a file to actual local file paths."""
+        if not self.project_root:
+            return set()
+            
+        raw_imports = self._parse_raw_imports(file_path)
+        local_files: Set[pathlib.Path] = set()
+        
+        for import_path in raw_imports:
+            resolved_paths = self._resolve_import_path(import_path, file_path)
+            local_files.update(resolved_paths)
+            
+        return local_files
+
+    def _parse_raw_imports(self, path: pathlib.Path) -> set[str]:
+        """Parse raw import statements without any extraction/filtering."""
+        raw_imports: Set[str] = set()
         lang_name = SUFFIX_TO_LANG.get(path.suffix.lower())
 
         if not lang_name or lang_name not in LANGUAGES:
-            return deps
+            logger.debug("No language support for file", file=str(path), suffix=path.suffix)
+            return raw_imports
         
         lang_obj = LANGUAGES[lang_name]
         query_obj = QUERIES[lang_name]
-        extractor_fn = EXTRACTORS[lang_name]
 
-        self.parser.language = Language(lang_obj)
+        self.parser.language = lang_obj
 
         try:
             content_bytes = path.read_bytes()
             tree = self.parser.parse(content_bytes)
             captures_dict = query_obj.captures(tree.root_node)
 
-            # Per the type hint, captures() returns a dict: {capture_name: [nodes...]}
-            # We iterate through all key-value pairs and process all nodes found.
+            # Collect raw import strings without any extraction
             for _capture_name, captured_nodes in captures_dict.items():
-                logger.info("Captured: " ,_capture_name)
                 for node in captured_nodes:
                     if node.text:
-                        raw_text = node.text.decode("utf-8", errors="replace")                        
-                        dep_identifier = extractor_fn(raw_text)
-                        if dep_identifier:
-                            deps.add(dep_identifier)
+                        raw_text = node.text.decode("utf-8", errors="replace").strip("'\"")
+                        if raw_text:
+                            raw_imports.add(raw_text)
+                            logger.debug("Found raw import", file=str(path), import_text=raw_text)
+            
+            logger.debug("Raw imports parsed", file=str(path), count=len(raw_imports), imports=list(raw_imports))
+                            
         except FileNotFoundError:
             logger.warning("File not found during import parsing.", path=str(path), lang=lang_name)
         except Exception as e:
             logger.error("Error parsing imports.", path=str(path), lang=lang_name, error=str(e), exc_info=True)
-        return deps
+        return raw_imports
+
+    def _resolve_import_path(self, import_path: str, from_file: pathlib.Path) -> Set[pathlib.Path]:
+        """Resolve an import path to actual local file paths with simple heuristics."""
+        resolved_paths: Set[pathlib.Path] = set()
+        
+        # Cache key for this resolution
+        cache_key = f"{import_path}:{from_file}"
+        if cache_key in self.import_cache:
+            return self.import_cache[cache_key]
+        
+        logger.debug("Resolving import", import_path=import_path, from_file=str(from_file))
+        
+        # Strategy 1: Direct file stem match
+        # "vector_db" -> vector_db.py
+        if import_path in self.file_map:
+            resolved_paths.add(self.file_map[import_path])
+            logger.debug("Direct stem match", import_path=import_path)
+        
+        # Strategy 2: Last component of dotted import
+        # "codechat.vector_db" -> vector_db.py
+        if '.' in import_path:
+            last_component = import_path.split('.')[-1]
+            if last_component in self.file_map:
+                resolved_paths.add(self.file_map[last_component])
+                logger.debug("Last component match", import_path=import_path, component=last_component)
+        
+        # Strategy 3: Relative imports
+        if import_path.startswith('.'):
+            clean_path = import_path.lstrip('./')
+            if clean_path in self.file_map:
+                resolved_paths.add(self.file_map[clean_path])
+                logger.debug("Relative import match", import_path=import_path, clean=clean_path)
+        
+        # Strategy 4: Check if any part of the import matches a file
+        parts = import_path.split('.')
+        for part in parts:
+            if part in self.file_map:
+                resolved_paths.add(self.file_map[part])
+                logger.debug("Part match", import_path=import_path, part=part)
+        
+        logger.debug("Import resolution complete", 
+                    import_path=import_path, 
+                    resolved_count=len(resolved_paths),
+                    resolved_files=[p.stem for p in resolved_paths])
+        
+        self.import_cache[cache_key] = resolved_paths
+        return resolved_paths
+
+    def _resolve_relative_import(self, import_path: str, from_file: pathlib.Path) -> Set[pathlib.Path]:
+        """Resolve relative imports like ./module, ../other."""
+        resolved_paths: Set[pathlib.Path] = set()
+        
+        # Remove leading dots and slashes
+        clean_path = import_path.lstrip('./')
+        
+        # Count leading dots to determine relative level
+        dot_count = len(import_path) - len(import_path.lstrip('.'))
+        
+        # Start from the file's directory and go up 'dot_count - 1' levels
+        start_dir = from_file.parent
+        for _ in range(max(0, dot_count - 1)):
+            start_dir = start_dir.parent
+        
+        # Try to find the module file
+        potential_paths = [
+            start_dir / f"{clean_path}.py",
+            start_dir / clean_path / "__init__.py",
+            start_dir / f"{clean_path}.ts",
+            start_dir / f"{clean_path}.js",
+        ]
+        
+        for potential_path in potential_paths:
+            if potential_path.exists() and potential_path != from_file:
+                resolved_paths.add(potential_path)
+        
+        return resolved_paths
+
+    def _resolve_absolute_import(self, import_path: str) -> Set[pathlib.Path]:
+        """Resolve absolute imports within the project."""
+        resolved_paths: Set[pathlib.Path] = set()
+        
+        if not self.project_root:
+            return resolved_paths
+        
+        # Split import path into components
+        parts = import_path.split('.')
+        
+        # Try different combinations to find local modules
+        for i in range(len(parts)):
+            # Try: codechat.module -> codechat/module.py
+            potential_path = self.project_root
+            for part in parts[:i+1]:
+                potential_path = potential_path / part
+            
+            # Try various file extensions
+            for ext in ['.py', '.ts', '.js', '.tsx', '.jsx']:
+                file_path = potential_path.with_suffix(ext)
+                if file_path.exists():
+                    resolved_paths.add(file_path)
+            
+            # Try module directory with __init__.py
+            init_path = potential_path / "__init__.py"
+            if init_path.exists():
+                resolved_paths.add(init_path)
+        
+        return resolved_paths
+
+    def _imports(self, path: pathlib.Path) -> set[str]:
+        """Legacy method - now delegates to local resolution."""
+        local_deps = self._resolve_local_imports(path)
+        return {dep.stem for dep in local_deps}
 
     # ---------- query methods -------------------------------------------
     def _get_file_identifier_if_valid(self, file_path: pathlib.Path) -> Optional[str]:
         """Helper to get file identifier (stem) if it's in the graph."""
         file_identifier = file_path.stem
         if file_identifier not in self.graph:
-            logger.debug("File identifier not found in graph.", identifier=file_identifier, path=str(file_path))
+            logger.warning("File identifier not found in graph.", 
+                         identifier=file_identifier, 
+                         path=str(file_path),
+                         available_nodes=list(self.graph.nodes())[:10])
             return None
 
         return file_identifier

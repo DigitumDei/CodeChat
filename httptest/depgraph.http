@@ -1,0 +1,96 @@
+### Dependency Graph API Tests
+
+# Base URL
+@baseUrl = http://localhost:16005
+
+### Get direct dependencies - what this file imports
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "daemon/codechat/server.py",
+    "dependency_type": "direct_dependencies"
+}
+
+### Get direct dependents - what files import this file
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "daemon/codechat/dep_graph.py",
+    "dependency_type": "direct_dependents"
+}
+
+### Get all dependencies - everything this file depends on (transitively)
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "vscode-extension/CodeChat/src/extension.ts",
+    "dependency_type": "all_dependents"
+}
+
+### Get all dependents - everything that depends on this file (transitively)
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "daemon/codechat/models.py",
+    "dependency_type": "direct_dependents"
+}
+
+
+
+
+### Test with VS Code extension file
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "vscode-extension/CodeChat/src/extension.ts",
+    "dependency_type": "direct_dependencies"
+}
+
+### Test with Python daemon file
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "daemon/codechat/indexer.py",
+    "dependency_type": "direct_dependencies"
+}
+
+### Test error case - non-existent file
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "nonexistent/file.py",
+    "dependency_type": "direct_dependencies"
+}
+
+### Test error case - invalid dependency type
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "daemon/codechat/server.py",
+    "dependency_type": "invalid_type"
+}
+
+### Health check to ensure daemon is running
+GET {{baseUrl}}/health
+
+### Debug dependency graph state
+GET {{baseUrl}}/debug/depgraph
+
+### Test with dep_graph - we know this has dependencies from debug output
+POST {{baseUrl}}/dependencies
+Content-Type: application/json
+
+{
+    "file_path": "dep_graph",
+    "dependency_type": "direct_dependencies"
+}
+
+
