@@ -2,8 +2,6 @@
 import pytest
 import tempfile
 import pathlib
-from unittest.mock import Mock, patch
-import networkx as nx
 
 from codechat.dep_graph import (
     DepGraph, 
@@ -25,7 +23,6 @@ class TestLanguageInitialization:
     def test_supported_languages_initialized(self):
         """Test that all supported languages are properly initialized."""
         # Only test languages that are actually available
-        available_languages = list(LANGUAGES.keys())
         
         # These should be available based on tree-sitter-language-pack
         core_languages = ["python", "javascript", "typescript", "cpp", "c", "html", "css"]
@@ -564,7 +561,6 @@ class TestGraphQuerying:
     def test_get_direct_dependents(self, sample_graph):
         """Test getting direct dependents.""" 
         path_b = pathlib.Path("B.py")
-        path_c = pathlib.Path("C.py")
         path_d = pathlib.Path("D.py")
         
         dependents_b = sample_graph.get_direct_dependents(path_b)
@@ -723,7 +719,7 @@ class TestEdgeCasesAndErrorHandling:
             
             # Test with relative path (if possible)
             relative_path = pathlib.Path(temp_path.name)
-            deps = dep_graph.get_direct_dependencies(relative_path)
+            dep_graph.get_direct_dependencies(relative_path)
             # Both should work with the same stem
             
         finally:

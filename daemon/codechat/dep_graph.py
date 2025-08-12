@@ -4,7 +4,7 @@ import networkx as nx
 import structlog
 
 from tree_sitter import Parser, Language, Query
-from tree_sitter_language_pack import get_language
+from tree_sitter_language_pack import get_language  # type: ignore[import-not-found]
 from typing import cast, Any
 
 from typing import Callable, Dict, Set, Optional
@@ -177,7 +177,7 @@ _initialize_language_configs()
 class DepGraph:
     """Builds a directed graph of local file dependencies where edges represent import relationships."""
     def __init__(self, project_root: Optional[pathlib.Path] = None):
-        self.graph = nx.DiGraph()
+        self.graph: nx.DiGraph = nx.DiGraph()
         self.parser = Parser()
         self.project_root = project_root
         self.file_map: Dict[str, pathlib.Path] = {}  # Maps file stems to full paths
