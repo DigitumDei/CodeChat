@@ -231,12 +231,6 @@ class TestDependencyParsing:
         if "csharp" not in LANGUAGES or "csharp" not in QUERIES:
             pytest.skip("C# language not available or has query issues")
         
-        test_cases = [
-            ("using System;", {"System"}),
-            ("using System.Collections.Generic;", {"System"}),
-            ("using Microsoft.AspNetCore;", {"Microsoft"}),
-        ]
-        
         dep_graph = DepGraph()
         
         # Test if C# parsing works at all
@@ -257,12 +251,6 @@ class TestDependencyParsing:
             pytest.skip("HTML language not available")
         
         dep_graph = DepGraph()
-        
-        # Raw parsing extracts file paths before extractor processing
-        test_cases = [
-            ('<link href="styles.css" rel="stylesheet">', {"styles.css"}),
-            ('<script src="app.js"></script>', {"app.js"}),
-        ]
         
         # Test if HTML parsing works at all
         with tempfile.NamedTemporaryFile(suffix=".html", mode="w", delete=False) as f:
