@@ -5,4 +5,10 @@ This document outlines the steps to execute the automation tests for the CodeCha
 ```powershell
 docker build --target test -t codechat:test .
 docker run codechat:test
+
+# if you want to run them directly
+cd daemon/
+poetry run pytest tests/unit/test_dep_graph.py -v
 ```
+
+

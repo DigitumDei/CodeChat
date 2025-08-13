@@ -324,9 +324,16 @@ class DepGraph:
         # Strategy 3: Relative imports
         if import_path.startswith('.'):
             clean_path = import_path.lstrip('./')
+            # Try exact match first
             if clean_path in self.file_map:
                 resolved_paths.add(self.file_map[clean_path])
                 logger.debug("Relative import match", import_path=import_path, clean=clean_path)
+            else:
+                # Try without file extension for paths like "./utils.js" -> "utils"
+                clean_stem = pathlib.Path(clean_path).stem
+                if clean_stem in self.file_map:
+                    resolved_paths.add(self.file_map[clean_stem])
+                    logger.debug("Relative import stem match", import_path=import_path, stem=clean_stem)
         
         # Strategy 4: Check if any part of the import matches a file
         parts = import_path.split('.')
