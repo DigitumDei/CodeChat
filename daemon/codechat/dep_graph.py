@@ -180,7 +180,7 @@ class DepGraph:
         self.graph: nx.DiGraph = nx.DiGraph()
         self.parser = Parser()
         self.project_root = project_root
-        self.file_map: Dict[str, pathlib.Path] = {}  # Maps file stems to full paths
+        self.file_map: Dict[str, pathlib.Path] = {}  # Maps project-relative paths to full paths
         self.import_cache: Dict[str, Set[pathlib.Path]] = {}  # Cache for import resolution
 
     def build(self, files: list[pathlib.Path]) -> None:
@@ -193,31 +193,49 @@ class DepGraph:
         if self.project_root is None and files:
             self.project_root = self._infer_project_root(files)
         
-        # Build file mapping: stem -> full path
+        # Build file mapping: project-relative path -> full path
         for path in files:
-            file_stem = path.stem
-            self.file_map[file_stem] = path
-            self.graph.add_node(file_stem)
+            try:
+                if self.project_root is not None:
+                    rel_path = path.relative_to(self.project_root)
+                    file_id = str(rel_path)
+                else:
+                    file_id = str(path)
+                self.file_map[file_id] = path
+                self.graph.add_node(file_id)
+            except ValueError:
+                # File is outside project root, use absolute path as fallback
+                file_id = str(path)
+                self.file_map[file_id] = path
+                self.graph.add_node(file_id)
         
         logger.debug("File map built", 
                     total_files=len(self.file_map),
-                    sample_stems=list(self.file_map.keys())[:10])
+                    sample_paths=list(self.file_map.keys())[:5])
         
         # Build file-to-file dependencies
         for path in files:
-            file_stem = path.stem
-            logger.debug("Processing file for dependencies", file=str(path), stem=file_stem)
+            try:
+                if self.project_root is not None:
+                    rel_path = path.relative_to(self.project_root)
+                    file_id = str(rel_path)
+                else:
+                    file_id = str(path)
+            except ValueError:
+                file_id = str(path)
+                
+            logger.debug("Processing file for dependencies", file=str(path), file_id=file_id)
             
             local_dependencies = self._resolve_local_imports(path)
-            logger.debug("Found local dependencies", file=file_stem, dependencies=[d.stem for d in local_dependencies])
+            logger.debug("Found local dependencies", file_id=file_id, dependencies=[self._get_file_id(d) for d in local_dependencies])
             
             for dep_path in local_dependencies:
-                dep_stem = dep_path.stem
-                if dep_stem in self.file_map:  # Only add edges for files in our project
-                    self.graph.add_edge(file_stem, dep_stem)
-                    logger.debug("Added edge", from_file=file_stem, to_file=dep_stem)
+                dep_id = self._get_file_id(dep_path)
+                if dep_id in self.file_map:  # Only add edges for files in our project
+                    self.graph.add_edge(file_id, dep_id)
+                    logger.debug("Added edge", from_file=file_id, to_file=dep_id)
                 else:
-                    logger.debug("Skipped dependency (not in file_map)", dep=dep_stem)
+                    logger.debug("Skipped dependency (not in file_map)", dep=dep_id)
                     
         logger.info("Local dependency graph built.", 
                    nodes=self.graph.number_of_nodes(), 
@@ -225,6 +243,18 @@ class DepGraph:
                    project_root=str(self.project_root))
 
     # ---------- helpers -------------------------------------------------
+    def _get_file_id(self, path: pathlib.Path) -> str:
+        """Get stable file identifier - project-relative path or absolute path."""
+        try:
+            if self.project_root is not None:
+                rel_path = path.relative_to(self.project_root)
+                return str(rel_path)
+            else:
+                return str(path)
+        except (ValueError, TypeError):
+            # File outside project root or no project root
+            return str(path)
+    
     def _infer_project_root(self, files: list[pathlib.Path]) -> pathlib.Path:
         """Infer project root by finding common parent directory."""
         if not files:
@@ -297,7 +327,7 @@ class DepGraph:
         return raw_imports
 
     def _resolve_import_path(self, import_path: str, from_file: pathlib.Path) -> Set[pathlib.Path]:
-        """Resolve an import path to actual local file paths with simple heuristics."""
+        """Resolve an import path to actual local file paths using conservative heuristics."""
         resolved_paths: Set[pathlib.Path] = set()
         
         # Cache key for this resolution
@@ -307,55 +337,66 @@ class DepGraph:
         
         logger.debug("Resolving import", import_path=import_path, from_file=str(from_file))
         
-        # Strategy 1: Direct file stem match
-        # "vector_db" -> vector_db.py
-        if import_path in self.file_map:
-            resolved_paths.add(self.file_map[import_path])
-            logger.debug("Direct stem match", import_path=import_path)
-        
-        # Strategy 2: Last component of dotted import
-        # "codechat.vector_db" -> vector_db.py
-        if '.' in import_path:
-            last_component = import_path.split('.')[-1]
-            if last_component in self.file_map:
-                resolved_paths.add(self.file_map[last_component])
-                logger.debug("Last component match", import_path=import_path, component=last_component)
-        
-        # Strategy 3: Relative imports
+        # Strategy 1: Relative imports (highest confidence)
         if import_path.startswith('.'):
-            clean_path = import_path.lstrip('./')
-            # Try exact match first
-            if clean_path in self.file_map:
-                resolved_paths.add(self.file_map[clean_path])
-                logger.debug("Relative import match", import_path=import_path, clean=clean_path)
-            else:
-                # Try without file extension for paths like "./utils.js" -> "utils"
-                clean_stem = pathlib.Path(clean_path).stem
-                if clean_stem in self.file_map:
-                    resolved_paths.add(self.file_map[clean_stem])
-                    logger.debug("Relative import stem match", import_path=import_path, stem=clean_stem)
+            resolved_paths.update(self._resolve_relative_import(import_path, from_file))
         
-        # Strategy 4: Check if any part of the import matches a file
-        parts = import_path.split('.')
-        for part in parts:
-            if part in self.file_map:
-                resolved_paths.add(self.file_map[part])
-                logger.debug("Part match", import_path=import_path, part=part)
+        # Strategy 2: Direct file path match in file_map
+        # Look for exact matches: "codechat/vector_db" -> "codechat/vector_db.py"
+        for file_id in self.file_map:
+            if self._import_matches_file_id(import_path, file_id):
+                resolved_paths.add(self.file_map[file_id])
+                logger.debug("File path match", import_path=import_path, file_id=file_id)
+        
+        # Strategy 3: Disabled to prevent over-linking
+        # The old "any part" heuristic would match x.y.z to any file named x, y, or z
+        # causing false positives. We now rely only on relative imports and direct matches.
         
         logger.debug("Import resolution complete", 
                     import_path=import_path, 
                     resolved_count=len(resolved_paths),
-                    resolved_files=[p.stem for p in resolved_paths])
+                    resolved_files=[self._get_file_id(p) for p in resolved_paths])
         
         self.import_cache[cache_key] = resolved_paths
         return resolved_paths
+    
+    def _import_matches_file_id(self, import_path: str, file_id: str) -> bool:
+        """Check if an import path matches a file ID with conservative rules."""
+        # Strip file extensions from import path for comparison
+        clean_import = import_path.replace('.js', '').replace('.ts', '').replace('.css', '')
+        
+        # Convert to Path objects for comparison
+        file_path = pathlib.Path(file_id)
+        
+        # For direct imports (no path separators), be conservative about subdirectories
+        if '/' not in clean_import and '.' not in clean_import:
+            # Simple name match: "utils" should match "utils.py" but not "deep/subdir/utils.py"
+            if file_path.stem == clean_import:
+                # Allow root level files or files at most one directory level deep
+                # This prevents matching files in deeply nested subdirectories
+                if len(file_path.parts) <= 2:  # Root or one level deep
+                    return True
+                # Don't match deeply nested files for simple imports
+                return False
+            
+        # Path-based match: "src/utils" -> "src/utils.py"
+        if file_path.with_suffix('') == pathlib.Path(clean_import):
+            return True
+            
+        return False
 
     def _resolve_relative_import(self, import_path: str, from_file: pathlib.Path) -> Set[pathlib.Path]:
         """Resolve relative imports like ./module, ../other."""
         resolved_paths: Set[pathlib.Path] = set()
         
-        # Remove leading dots and slashes
+        # Handle imports that already include file extensions
         clean_path = import_path.lstrip('./')
+        if clean_path.endswith(('.js', '.ts', '.py', '.jsx', '.tsx')):
+            # Import already has extension, use it directly
+            clean_name = clean_path
+        else:
+            # No extension provided
+            clean_name = clean_path
         
         # Count leading dots to determine relative level
         dot_count = len(import_path) - len(import_path.lstrip('.'))
@@ -366,16 +407,27 @@ class DepGraph:
             start_dir = start_dir.parent
         
         # Try to find the module file
-        potential_paths = [
-            start_dir / f"{clean_path}.py",
-            start_dir / clean_path / "__init__.py",
-            start_dir / f"{clean_path}.ts",
-            start_dir / f"{clean_path}.js",
-        ]
+        if clean_name.endswith(('.js', '.ts', '.py', '.jsx', '.tsx')):
+            # Import has extension, try exact match first
+            potential_paths = [start_dir / clean_name]
+        else:
+            # Import has no extension, try various extensions
+            potential_paths = [
+                start_dir / f"{clean_name}.py",
+                start_dir / clean_name / "__init__.py",
+                start_dir / f"{clean_name}.ts",
+                start_dir / f"{clean_name}.js",
+                start_dir / f"{clean_name}.jsx",
+                start_dir / f"{clean_name}.tsx",
+            ]
         
         for potential_path in potential_paths:
             if potential_path.exists() and potential_path != from_file:
                 resolved_paths.add(potential_path)
+                logger.debug("Resolved relative import", 
+                           import_path=import_path,
+                           from_file=str(from_file),
+                           resolved_to=str(potential_path))
         
         return resolved_paths
 
@@ -416,8 +468,8 @@ class DepGraph:
 
     # ---------- query methods -------------------------------------------
     def _get_file_identifier_if_valid(self, file_path: pathlib.Path) -> Optional[str]:
-        """Helper to get file identifier (stem) if it's in the graph."""
-        file_identifier = file_path.stem
+        """Helper to get file identifier (project-relative path) if it's in the graph."""
+        file_identifier = self._get_file_id(file_path)
         if file_identifier not in self.graph:
             logger.warning("File identifier not found in graph.", 
                          identifier=file_identifier, 
@@ -458,7 +510,7 @@ class DepGraph:
     # --- Granular Update Methods ---
     def add_or_update_file(self, path: pathlib.Path) -> None:
         """Adds or updates a file's node and dependencies in the graph."""
-        file_identifier = path.stem
+        file_identifier = self._get_file_id(path)
         old_dependencies = self.get_direct_dependencies(path)  # Existing dependencies
 
         # Remove old edges before updating
@@ -467,11 +519,16 @@ class DepGraph:
 
         # Add or ensure the file node itself exists
         self.graph.add_node(file_identifier)
+        self.file_map[file_identifier] = path
 
-        # Parse new dependencies and add them as edges
-        new_dependencies = self._imports(path)  
-        for dep_identifier in new_dependencies:
-            self.graph.add_edge(file_identifier, dep_identifier)
+        # Parse new dependencies and add edges to local files
+        local_files = self._resolve_local_imports(path)
+        new_dependencies = set()
+        for dep_path in local_files:
+            dep_id = self._get_file_id(dep_path)
+            if dep_id in self.file_map:  # Only add edges for files in our project
+                self.graph.add_edge(file_identifier, dep_id)
+                new_dependencies.add(dep_id)
 
         if new_dependencies != old_dependencies:
             logger.info("Updated dependencies for file.", file=file_identifier, old=sorted(old_dependencies), new=sorted(new_dependencies))
@@ -480,26 +537,27 @@ class DepGraph:
 
     def remove_file(self, path: pathlib.Path) -> None:
         """Removes a file's node and its dependencies from the graph."""
-        file_identifier = path.stem
+        file_identifier = self._get_file_id(path)
         if file_identifier in self.graph:
             self.graph.remove_node(file_identifier)
+            self.file_map.pop(file_identifier, None)
             logger.info("Removed file from dependency graph.", file=file_identifier)
         else:
             logger.debug("File not found in dependency graph for removal.", file=file_identifier)
 
     def move_file(self, old_path: pathlib.Path, new_path: pathlib.Path) -> None:
         """Moves a file's node in the graph, updating its identifier and dependencies."""
-        old_identifier = old_path.stem
-        new_identifier = new_path.stem
+        old_identifier = self._get_file_id(old_path)
+        new_identifier = self._get_file_id(new_path)
 
         if old_identifier not in self.graph:
             logger.warning("Source file not found in dependency graph for move. Treating as add of new file.", old_file=old_identifier, new_file=new_identifier)
             self.add_or_update_file(new_path)  # Treat as new file
             return
 
-        # Update node if needed: if stem changes, we treat it as remove + add.
+        # Update node if needed: if path changes, we treat it as remove + add.
         if old_identifier != new_identifier:
             self.remove_file(old_path) 
             self.add_or_update_file(new_path) # Re-parse for deps at new location
         else:
-            self.add_or_update_file(new_path)  # Just update file (content change, same name)
+            self.add_or_update_file(new_path)  # Just update file (content change, same path)

@@ -393,16 +393,18 @@ class TestGraphBuilding:
             
             dep_graph.build([utils_path, main_path])
             
-            # Should have 2 nodes (file stems)
+            # Should have 2 nodes (project-relative paths)
             assert dep_graph.graph.number_of_nodes() == 2
             
-            # Check that file nodes exist
-            assert utils_path.stem in dep_graph.graph
-            assert main_path.stem in dep_graph.graph
+            # Check that file nodes exist (using project-relative paths)
+            utils_id = dep_graph._get_file_id(utils_path)
+            main_id = dep_graph._get_file_id(main_path)
+            assert utils_id in dep_graph.graph
+            assert main_id in dep_graph.graph
             
             # Should have 1 edge: main -> utils
             assert dep_graph.graph.number_of_edges() == 1
-            assert dep_graph.graph.has_edge(main_path.stem, utils_path.stem)
+            assert dep_graph.graph.has_edge(main_id, utils_id)
             
         finally:
             for temp_file in temp_files:
@@ -420,7 +422,8 @@ class TestGraphBuilding:
         try:
             # Add file to graph
             dep_graph.add_or_update_file(temp_path)
-            assert temp_path.stem in dep_graph.graph
+            file_id = dep_graph._get_file_id(temp_path)
+            assert file_id in dep_graph.graph
             
             # Update file with new content
             with open(temp_path, "w") as f:
@@ -428,7 +431,7 @@ class TestGraphBuilding:
             
             dep_graph.add_or_update_file(temp_path)
             # Should still be in the graph
-            assert temp_path.stem in dep_graph.graph
+            assert file_id in dep_graph.graph
             
         finally:
             temp_path.unlink()
@@ -443,10 +446,11 @@ class TestGraphBuilding:
         
         try:
             dep_graph.add_or_update_file(temp_path)
-            assert temp_path.stem in dep_graph.graph
+            file_id = dep_graph._get_file_id(temp_path)
+            assert file_id in dep_graph.graph
             
             dep_graph.remove_file(temp_path)
-            assert temp_path.stem not in dep_graph.graph
+            assert file_id not in dep_graph.graph
             
         finally:
             temp_path.unlink()
@@ -475,18 +479,19 @@ class TestGraphBuilding:
             
             # Build graph
             dep_graph.build([helper_path, old_path])
-            old_stem = old_path.stem
-            assert old_stem in dep_graph.graph
-            assert dep_graph.graph.has_edge(old_stem, helper_path.stem)
+            old_id = dep_graph._get_file_id(old_path)
+            helper_id = dep_graph._get_file_id(helper_path)
+            assert old_id in dep_graph.graph
+            assert dep_graph.graph.has_edge(old_id, helper_id)
             
             # Move file (rename)
             old_path.rename(new_path)
             dep_graph.move_file(old_path, new_path)
             
-            new_stem = new_path.stem
-            assert old_stem not in dep_graph.graph
-            assert new_stem in dep_graph.graph
-            assert dep_graph.graph.has_edge(new_stem, helper_path.stem)
+            new_id = dep_graph._get_file_id(new_path)
+            assert old_id not in dep_graph.graph
+            assert new_id in dep_graph.graph
+            assert dep_graph.graph.has_edge(new_id, helper_id)
             
         finally:
             for temp_file in temp_files:
@@ -503,8 +508,9 @@ class TestGraphBuilding:
         
         try:
             dep_graph.add_or_update_file(temp_path)
-            assert temp_path.stem in dep_graph.graph
-            assert len(list(dep_graph.graph.successors(temp_path.stem))) == 0
+            file_id = dep_graph._get_file_id(temp_path)
+            assert file_id in dep_graph.graph
+            assert len(list(dep_graph.graph.successors(file_id))) == 0
             
         finally:
             temp_path.unlink()
@@ -532,10 +538,19 @@ class TestGraphQuerying:
     
     def test_get_direct_dependencies(self, sample_graph):
         """Test getting direct dependencies."""
-        # Create mock paths
+        # Create mock paths that match the hardcoded graph
+        # Note: sample_graph uses hardcoded "A", "B", "C", "D" node names
+        # We need to mock paths that would resolve to these IDs
         path_a = pathlib.Path("A.py")
         path_b = pathlib.Path("B.py")
         path_d = pathlib.Path("D.py")
+        
+        # For this test, we'll mock the _get_file_identifier_if_valid method
+        # to return the expected node IDs
+        def mock_get_file_id(path):
+            return path.stem
+        
+        sample_graph._get_file_identifier_if_valid = mock_get_file_id
         
         deps_a = sample_graph.get_direct_dependencies(path_a)
         assert deps_a == {"B", "C"}
@@ -551,6 +566,11 @@ class TestGraphQuerying:
         path_b = pathlib.Path("B.py")
         path_d = pathlib.Path("D.py")
         
+        # Mock the method for consistency with hardcoded graph
+        def mock_get_file_id(path):
+            return path.stem
+        sample_graph._get_file_identifier_if_valid = mock_get_file_id
+        
         dependents_b = sample_graph.get_direct_dependents(path_b)
         assert dependents_b == {"A"}
         
@@ -565,6 +585,11 @@ class TestGraphQuerying:
         path_a = pathlib.Path("A.py")
         path_b = pathlib.Path("B.py")
         
+        # Mock the method for consistency with hardcoded graph
+        def mock_get_file_id(path):
+            return path.stem
+        sample_graph._get_file_identifier_if_valid = mock_get_file_id
+        
         all_deps_a = sample_graph.get_all_dependencies(path_a)
         assert all_deps_a == {"B", "C", "D"}  # Transitive closure
         
@@ -576,6 +601,11 @@ class TestGraphQuerying:
         path_d = pathlib.Path("D.py")
         path_c = pathlib.Path("C.py")
         
+        # Mock the method for consistency with hardcoded graph
+        def mock_get_file_id(path):
+            return path.stem
+        sample_graph._get_file_identifier_if_valid = mock_get_file_id
+        
         all_dependents_d = sample_graph.get_all_dependents(path_d)
         assert all_dependents_d == {"A", "B", "C"}  # All files that depend on D
         
@@ -585,6 +615,13 @@ class TestGraphQuerying:
     def test_queries_for_nonexistent_files(self, sample_graph):
         """Test queries for files not in graph."""
         nonexistent_path = pathlib.Path("nonexistent.py")
+        
+        # Mock should return None for nonexistent files, causing methods to return empty sets
+        def mock_get_file_id(path):
+            if path.stem == "nonexistent":
+                return None
+            return path.stem
+        sample_graph._get_file_identifier_if_valid = mock_get_file_id
         
         assert sample_graph.get_direct_dependencies(nonexistent_path) == set()
         assert sample_graph.get_direct_dependents(nonexistent_path) == set()
@@ -628,6 +665,11 @@ class TestEdgeCasesAndErrorHandling:
         path_a = pathlib.Path("A.py")
         path_b = pathlib.Path("B.py")
         
+        # Mock the file identifier method to return the simple node names
+        def mock_get_file_id(path):
+            return path.stem
+        dep_graph._get_file_identifier_if_valid = mock_get_file_id
+        
         # Should handle circular deps without infinite loops
         deps_a = dep_graph.get_all_dependencies(path_a)
         deps_b = dep_graph.get_all_dependencies(path_b)
@@ -646,6 +688,11 @@ class TestEdgeCasesAndErrorHandling:
         # Should handle large graphs efficiently
         start_path = pathlib.Path("0.py")
         end_path = pathlib.Path("999.py")
+        
+        # Mock the file identifier method to return the simple node names
+        def mock_get_file_id(path):
+            return path.stem
+        dep_graph._get_file_identifier_if_valid = mock_get_file_id
         
         all_deps = dep_graph.get_all_dependencies(start_path)
         assert len(all_deps) == 999
@@ -703,15 +750,187 @@ class TestEdgeCasesAndErrorHandling:
         try:
             # Test with absolute path
             dep_graph.add_or_update_file(temp_path.absolute())
-            assert temp_path.stem in dep_graph.graph
+            file_id = dep_graph._get_file_id(temp_path.absolute())
+            assert file_id in dep_graph.graph
             
             # Test with relative path (if possible)
             relative_path = pathlib.Path(temp_path.name)
             dep_graph.get_direct_dependencies(relative_path)
-            # Both should work with the same stem
+            # Both should work with the project-relative path system
             
         finally:
             temp_path.unlink()
+
+
+class TestOverLinkingPrevention:
+    """Test that import resolution doesn't create false positive dependencies."""
+    
+    def test_dotted_import_no_false_positives(self):
+        """Test that x.y.z doesn't match unrelated files named x, y, or z."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create files with names that could cause false matches
+            x_file = tempfile.NamedTemporaryFile(suffix="_x.py", mode="w", delete=False)
+            x_file.write("def x_func(): pass")
+            x_file.close()
+            x_path = pathlib.Path(x_file.name)
+            temp_files.append(x_path)
+            
+            y_file = tempfile.NamedTemporaryFile(suffix="_y.py", mode="w", delete=False)
+            y_file.write("def y_func(): pass")
+            y_file.close()
+            y_path = pathlib.Path(y_file.name)
+            temp_files.append(y_path)
+            
+            z_file = tempfile.NamedTemporaryFile(suffix="_z.py", mode="w", delete=False)
+            z_file.write("def z_func(): pass")
+            z_file.close()
+            z_path = pathlib.Path(z_file.name)
+            temp_files.append(z_path)
+            
+            # Create a main file that imports an external dotted package
+            main_file = tempfile.NamedTemporaryFile(suffix="_main.py", mode="w", delete=False)
+            main_file.write("import some.external.package")  # Should NOT match x, y, z files
+            main_file.close()
+            main_path = pathlib.Path(main_file.name)
+            temp_files.append(main_path)
+            
+            # Build the dependency graph
+            dep_graph.build([main_path, x_path, y_path, z_path])
+            
+            # Main should not have any local dependencies (all files are unrelated)
+            main_deps = dep_graph.get_direct_dependencies(main_path)
+            assert len(main_deps) == 0, f"Expected no dependencies, got {main_deps}"
+            
+            # Each file should be isolated (no false connections)
+            assert dep_graph.graph.number_of_edges() == 0, "Expected no edges in graph"
+            
+        finally:
+            for temp_file in temp_files:
+                temp_file.unlink()
+    
+    def test_package_name_collision_prevention(self):
+        """Test that package.module doesn't match unrelated files named package or module."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create files that could cause false matches
+            package_file = tempfile.NamedTemporaryFile(suffix="_package.py", mode="w", delete=False)
+            package_file.write("def package_func(): pass")
+            package_file.close()
+            package_path = pathlib.Path(package_file.name)
+            temp_files.append(package_path)
+            
+            module_file = tempfile.NamedTemporaryFile(suffix="_module.py", mode="w", delete=False)
+            module_file.write("def module_func(): pass")
+            module_file.close()
+            module_path = pathlib.Path(module_file.name)
+            temp_files.append(module_path)
+            
+            # Create a main file that imports an external package
+            main_file = tempfile.NamedTemporaryFile(suffix="_main.py", mode="w", delete=False)
+            main_file.write("from package.module import something")  # Should NOT match local files
+            main_file.close()
+            main_path = pathlib.Path(main_file.name)
+            temp_files.append(main_path)
+            
+            # Build the dependency graph
+            dep_graph.build([main_path, package_path, module_path])
+            
+            # Main should not have any local dependencies
+            main_deps = dep_graph.get_direct_dependencies(main_path)
+            assert len(main_deps) == 0, f"Expected no dependencies, got {main_deps}"
+            
+            # No false connections should exist
+            assert dep_graph.graph.number_of_edges() == 0, "Expected no edges in graph"
+            
+        finally:
+            for temp_file in temp_files:
+                temp_file.unlink()
+    
+    def test_subdirectory_import_no_false_positives(self):
+        """Test that simple imports don't match files in subdirectories."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create a utility file in root
+            utils_file = tempfile.NamedTemporaryFile(suffix="_utils.py", mode="w", delete=False)
+            utils_file.write("def helper(): pass")
+            utils_file.close()
+            utils_path = pathlib.Path(utils_file.name)
+            temp_files.append(utils_path)
+            
+            # Create a main file that imports utils
+            main_file = tempfile.NamedTemporaryFile(suffix="_main.py", mode="w", delete=False)
+            main_file.write(f"import {utils_path.stem}")  # Should match root utils
+            main_file.close()
+            main_path = pathlib.Path(main_file.name)
+            temp_files.append(main_path)
+            
+            # Create a different file with same name in subdirectory
+            subdir = pathlib.Path(main_path.parent / "subdir")
+            subdir.mkdir(exist_ok=True)
+            decoy_file = subdir / f"{utils_path.name}"
+            decoy_file.write_text("def decoy(): pass")
+            temp_files.append(decoy_file)
+            temp_files.append(subdir)  # Remember to clean up directory
+            
+            # Build the dependency graph
+            dep_graph.build([main_path, utils_path, decoy_file])
+            
+            # Main should depend on the root utils file, not the subdirectory one
+            main_deps = dep_graph.get_direct_dependencies(main_path)
+            utils_id = dep_graph._get_file_id(utils_path)
+            decoy_id = dep_graph._get_file_id(decoy_file)
+            
+            # Should only depend on root utils, not subdirectory decoy
+            assert utils_id in main_deps, f"Expected {utils_id} in dependencies {main_deps}"
+            assert decoy_id not in main_deps, f"Should not depend on subdirectory file {decoy_id}"
+            
+        finally:
+            for temp_file in temp_files:
+                if temp_file.exists():
+                    if temp_file.is_dir():
+                        import shutil
+                        shutil.rmtree(temp_file)
+                    else:
+                        temp_file.unlink()
+    
+    def test_direct_path_matches_still_work(self):
+        """Test that direct path matches (like 'utils' -> 'utils.py') still work."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create a utility file  
+            utils_file = tempfile.NamedTemporaryFile(suffix="_utils.py", mode="w", delete=False)
+            utils_file.write("def helper(): pass")
+            utils_file.close()
+            utils_path = pathlib.Path(utils_file.name)
+            temp_files.append(utils_path)
+            
+            # Create a main file that imports by exact name
+            main_file = tempfile.NamedTemporaryFile(suffix="_main.py", mode="w", delete=False)
+            main_file.write(f"import {utils_path.stem}")  # Direct import should work
+            main_file.close()
+            main_path = pathlib.Path(main_file.name)
+            temp_files.append(main_path)
+            
+            # Build the dependency graph
+            dep_graph.build([main_path, utils_path])
+            
+            # Main should depend on utils
+            main_deps = dep_graph.get_direct_dependencies(main_path)
+            utils_id = dep_graph._get_file_id(utils_path)
+            assert utils_id in main_deps, f"Expected {utils_id} in dependencies {main_deps}"
+            
+        finally:
+            for temp_file in temp_files:
+                temp_file.unlink()
 
 
 class TestIntegrationWithTestData:
@@ -748,8 +967,10 @@ class TestIntegrationWithTestData:
             
             # Verify the dependency relationships - test local file dependencies only
             main_deps = dep_graph.get_direct_dependencies(main_path)
-            assert utils_path.stem in main_deps
-            assert config_path.stem in main_deps
+            utils_id = dep_graph._get_file_id(utils_path)
+            config_id = dep_graph._get_file_id(config_path)
+            assert utils_id in main_deps
+            assert config_id in main_deps
             
             # Utils and config should have no local dependencies (only external ones)
             utils_deps = dep_graph.get_direct_dependencies(utils_path)
@@ -761,7 +982,7 @@ class TestIntegrationWithTestData:
             # Test transitive dependencies - check what we actually got
             all_main_deps = dep_graph.get_all_dependencies(main_path)
             # We expect at least the direct local dependencies
-            expected_direct = {utils_path.stem, config_path.stem}
+            expected_direct = {utils_id, config_id}
             assert expected_direct.issubset(all_main_deps), f"Expected {expected_direct}, got {all_main_deps}"
             
         finally:
@@ -813,10 +1034,12 @@ class TestIntegrationWithTestData:
             
             # Check local file dependencies
             py_deps = dep_graph.get_direct_dependencies(py_path)
-            assert py_utils_path.stem in py_deps
+            py_utils_id = dep_graph._get_file_id(py_utils_path)
+            assert py_utils_id in py_deps
             
             js_deps = dep_graph.get_direct_dependencies(js_path) 
-            assert js_utils_path.stem in js_deps
+            js_utils_id = dep_graph._get_file_id(js_utils_path)
+            assert js_utils_id in js_deps
             
             # C++ file should have no local dependencies
             cpp_deps = dep_graph.get_direct_dependencies(cpp_path)
@@ -824,10 +1047,12 @@ class TestIntegrationWithTestData:
             
             # Utility files should have dependents
             py_utils_dependents = dep_graph.get_direct_dependents(py_utils_path)
-            assert py_path.stem in py_utils_dependents
+            py_id = dep_graph._get_file_id(py_path)
+            assert py_id in py_utils_dependents
             
             js_utils_dependents = dep_graph.get_direct_dependents(js_utils_path)
-            assert js_path.stem in js_utils_dependents
+            js_id = dep_graph._get_file_id(js_path)
+            assert js_id in js_utils_dependents
             
         finally:
             for temp_file in temp_files:
