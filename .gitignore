@@ -3,6 +3,11 @@
 .codechat/
 .claude/settings.local.json
 
+# Python build artifacts
+*/dist/
+*/build/
+*.egg-info/
+
 # VS Code extension
 vscode-extension/CodeChat/node_modules/
 vscode-extension/CodeChat/out/
