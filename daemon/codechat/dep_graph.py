@@ -192,6 +192,16 @@ class DepGraph:
         # Infer project root if not provided
         if self.project_root is None and files:
             self.project_root = self._infer_project_root(files)
+            
+            # Warn about potentially problematic project roots
+            if str(self.project_root) in ['/', '/home', '/usr', '/var']:
+                logger.warning("Project root inferred as system directory, file IDs may be very long", 
+                             project_root=str(self.project_root),
+                             sample_file_ids=[self._get_file_id(f) for f in files[:3]])
+            elif len(self.project_root.parts) <= 2:
+                logger.info("Project root is quite shallow, file IDs will include full directory structure", 
+                          project_root=str(self.project_root),
+                          sample_file_ids=[self._get_file_id(f) for f in files[:3]])
         
         # Build file mapping: project-relative path -> full path
         for path in files:
@@ -260,21 +270,41 @@ class DepGraph:
         if not files:
             return pathlib.Path.cwd()
         
-        # Find common parent of all files
-        common_parent = files[0].parent
-        for file_path in files[1:]:
-            try:
-                common_parent = pathlib.Path(*common_parent.parts[:len(file_path.relative_to(common_parent).parts)])
-            except ValueError:
-                # Files don't share common path, try parent
-                while common_parent != common_parent.parent:
-                    try:
-                        file_path.relative_to(common_parent)
-                        break
-                    except ValueError:
-                        common_parent = common_parent.parent
+        # Find common parent of all files by comparing path parts
+        if len(files) == 1:
+            return files[0].parent
+            
+        # Start with first file's parent
+        common_parts = list(files[0].parent.parts)
         
-        return common_parent
+        # Find common prefix with all other files
+        for file_path in files[1:]:
+            file_parts = list(file_path.parent.parts)
+            
+            # Find common prefix between current common_parts and this file's parts
+            new_common_parts = []
+            for i in range(min(len(common_parts), len(file_parts))):
+                if common_parts[i] == file_parts[i]:
+                    new_common_parts.append(common_parts[i])
+                else:
+                    break
+            common_parts = new_common_parts
+            
+            # If no common parts remain, fall back to root
+            if not common_parts:
+                return pathlib.Path("/")
+        
+        # Reconstruct path from common parts
+        if common_parts:
+            project_root = pathlib.Path(*common_parts)
+            logger.debug("Inferred project root from common parts", 
+                        project_root=str(project_root),
+                        num_files=len(files),
+                        sample_files=[str(f) for f in files[:3]])
+            return project_root
+        else:
+            logger.warning("No common path parts found, falling back to filesystem root")
+            return pathlib.Path("/")
 
     def _resolve_local_imports(self, file_path: pathlib.Path) -> Set[pathlib.Path]:
         """Resolve imports in a file to actual local file paths."""
@@ -384,13 +414,13 @@ class DepGraph:
         
         # For direct imports (no path separators), be conservative about subdirectories
         if '/' not in clean_import and '.' not in clean_import:
-            # Simple name match: "utils" should match "utils.py" but not "deep/subdir/utils.py"
+            # Simple name match: "utils" should match "utils.py" but not "subdir/utils.py"
             if file_path.stem == clean_import:
-                # Allow root level files or files at most one directory level deep
-                # This prevents matching files in deeply nested subdirectories
-                if len(file_path.parts) <= 2:  # Root or one level deep
+                # For simple imports, only match files at root level (no path separators)
+                # This prevents over-linking to files in subdirectories
+                if '/' not in file_id:  # Root level file
                     return True
-                # Don't match deeply nested files for simple imports
+                # Don't match subdirectory files for simple imports to prevent over-linking
                 return False
             
         # Path-based match: "src/utils" -> "src/utils.py"
