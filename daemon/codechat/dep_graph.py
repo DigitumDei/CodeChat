@@ -344,13 +344,27 @@ class DepGraph:
         # Strategy 2: Direct file path match in file_map
         # Look for exact matches: "codechat/vector_db" -> "codechat/vector_db.py"
         for file_id in self.file_map:
+            file_path = self.file_map[file_id]
+            # Don't allow self-imports
+            if file_path == from_file:
+                continue
             if self._import_matches_file_id(import_path, file_id):
-                resolved_paths.add(self.file_map[file_id])
+                resolved_paths.add(file_path)
                 logger.debug("File path match", import_path=import_path, file_id=file_id)
         
-        # Strategy 3: Disabled to prevent over-linking
-        # The old "any part" heuristic would match x.y.z to any file named x, y, or z
-        # causing false positives. We now rely only on relative imports and direct matches.
+        # Strategy 3: Last component of dotted imports (conservative)
+        # "codechat.models" should match "models.py" if there's reasonable context
+        if '.' in import_path and not import_path.startswith('.'):
+            last_component = import_path.split('.')[-1]
+            for file_id in self.file_map:
+                file_path = self.file_map[file_id]
+                # Don't allow self-imports
+                if file_path == from_file:
+                    continue
+                if pathlib.Path(file_id).stem == last_component:
+                    resolved_paths.add(file_path)
+                    logger.debug("Last component match", import_path=import_path, 
+                               component=last_component, file_id=file_id)
         
         logger.debug("Import resolution complete", 
                     import_path=import_path, 
