@@ -476,36 +476,6 @@ class DepGraph:
         
         return resolved_paths
 
-    def _resolve_absolute_import(self, import_path: str) -> Set[pathlib.Path]:
-        """Resolve absolute imports within the project."""
-        resolved_paths: Set[pathlib.Path] = set()
-        
-        if not self.project_root:
-            return resolved_paths
-        
-        # Split import path into components
-        parts = import_path.split('.')
-        
-        # Try different combinations to find local modules
-        for i in range(len(parts)):
-            # Try: codechat.module -> codechat/module.py
-            potential_path = self.project_root
-            for part in parts[:i+1]:
-                potential_path = potential_path / part
-            
-            # Try various file extensions
-            for ext in ['.py', '.ts', '.js', '.tsx', '.jsx']:
-                file_path = potential_path.with_suffix(ext)
-                if file_path.exists():
-                    resolved_paths.add(file_path)
-            
-            # Try module directory with __init__.py
-            init_path = potential_path / "__init__.py"
-            if init_path.exists():
-                resolved_paths.add(init_path)
-        
-        return resolved_paths
-
     def _imports(self, path: pathlib.Path) -> set[str]:
         """Legacy method - now delegates to local resolution."""
         local_deps = self._resolve_local_imports(path)
