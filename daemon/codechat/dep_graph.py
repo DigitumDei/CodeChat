@@ -58,6 +58,7 @@ LANGUAGE_DEFINITIONS = {
               (import_statement name: (dotted_name) @module)
               (import_statement (aliased_import name: (dotted_name) @module))
               (import_from_statement module_name: (dotted_name) @module)
+              (import_from_statement module_name: (relative_import) @module)
             ]
         """,
         "extractor": _extract_python_dep,

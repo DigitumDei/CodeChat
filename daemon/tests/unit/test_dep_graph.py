@@ -141,6 +141,148 @@ class TestDependencyParsing:
             assert expected_multiline.issubset(raw_imports), f"Multi-line test failed. Got {raw_imports}, expected at least {expected_multiline}"
         finally:
             temp_path.unlink()
+
+    def test_python_import_variations(self):
+        """Test comprehensive Python import variations: import x as y, from x import y, multi-import lines."""
+        if "python" not in LANGUAGES:
+            pytest.skip("Python language not available")
+        
+        dep_graph = DepGraph()
+        
+        # Test import x as y variations
+        import_as_cases = [
+            ("import os as operating_system", {"os"}),
+            ("import json as js", {"json"}),
+            ("import collections.abc as abc", {"collections.abc"}),
+        ]
+        
+        for code, expected_deps in import_as_cases:
+            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert raw_imports == expected_deps, f"Failed for import as: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+        
+        # Test from x import y variations  
+        from_import_cases = [
+            ("from os import path", {"os"}),
+            ("from json import loads, dumps", {"json"}),
+            ("from collections import defaultdict", {"collections"}),
+            ("from pathlib import Path, PurePath", {"pathlib"}),
+        ]
+        
+        for code, expected_deps in from_import_cases:
+            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert raw_imports == expected_deps, f"Failed for from import: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+        
+        # Test multi-import lines in a single file
+        multi_import_code = """
+import os
+import sys, json
+from pathlib import Path
+from collections import defaultdict, Counter
+import numpy as np
+"""
+        
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+            f.write(multi_import_code)
+            temp_path = pathlib.Path(f.name)
+        
+        try:
+            raw_imports = dep_graph._parse_raw_imports(temp_path)
+            expected_imports = {"os", "sys", "json", "pathlib", "collections", "numpy"}
+            assert expected_imports.issubset(raw_imports), f"Multi-import test failed. Got {raw_imports}, expected at least {expected_imports}"
+        finally:
+            temp_path.unlink()
+
+    def test_python_relative_imports(self):
+        """Test Python relative imports: .foo, ..bar, etc."""
+        if "python" not in LANGUAGES:
+            pytest.skip("Python language not available")
+        
+        dep_graph = DepGraph()
+        
+        # Test relative import parsing - these should be captured as raw imports
+        relative_import_cases = [
+            ("from .module import function", {".module"}),
+            ("from ..parent import class", {"..parent"}),
+            ("from ...grandparent import const", {"...grandparent"}),
+            ("from . import sibling", {"."}),
+            ("from .. import parent_module", {".."}),
+        ]
+        
+        for code, expected_deps in relative_import_cases:
+            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert raw_imports == expected_deps, f"Failed for relative import: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+
+    def test_python_namespace_packages(self):
+        """Test Python namespace packages (no __init__.py) dependency resolution."""
+        if "python" not in LANGUAGES:
+            pytest.skip("Python language not available")
+        
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create temporary directory structure for namespace package test
+            import tempfile
+            temp_dir = pathlib.Path(tempfile.mkdtemp())
+            
+            # Create namespace package structure: namespace/module.py (no __init__.py)
+            namespace_dir = temp_dir / "namespace"
+            namespace_dir.mkdir()
+            # Note: intentionally no __init__.py in namespace_dir
+            
+            module_py = namespace_dir / "module.py"
+            module_py.write_text("def namespace_function(): pass")
+            temp_files.append(module_py)
+            
+            # Create main.py that imports from namespace package
+            main_py = temp_dir / "main.py"
+            main_py.write_text("from namespace.module import namespace_function")
+            temp_files.append(main_py)
+            
+            # Build the graph
+            dep_graph.build([module_py, main_py])
+            
+            # Should have 2 nodes
+            assert dep_graph.graph.number_of_nodes() == 2
+            
+            # Main should depend on namespace.module 
+            main_deps = dep_graph.get_direct_dependencies(main_py)
+            module_id = dep_graph._get_file_id(module_py)
+            
+            # The import "namespace.module" should resolve to namespace/module.py
+            assert len(main_deps) == 1, f"main.py should depend on 1 file, got: {main_deps}"
+            assert module_id in main_deps, f"main.py should depend on namespace/module.py, deps: {main_deps}"
+            
+        finally:
+            # Clean up temp files and directories
+            for temp_file in temp_files:
+                if temp_file.exists():
+                    temp_file.unlink()
+            # Clean up directories
+            if 'temp_dir' in locals():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
     
     def test_javascript_import_parsing(self):
         """Test JavaScript/ES6 import raw parsing."""
@@ -171,6 +313,69 @@ class TestDependencyParsing:
                 # For require(), it may also capture "require" - filter it out
                 raw_imports = {dep for dep in raw_imports if dep != "require"}
                 assert expected_deps.issubset(raw_imports), f"Failed for code: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+
+    def test_javascript_import_variations(self):
+        """Test comprehensive JS/TS import variations: relative ./mod, ../mod, extensionless imports, index files."""
+        if "javascript" not in LANGUAGES:
+            pytest.skip("JavaScript language not available")
+        
+        dep_graph = DepGraph()
+        
+        # Test relative imports ./mod, ../mod
+        relative_import_cases = [
+            ('import utils from "./utils";', {"./utils"}),
+            ('import helper from "./utils/helper";', {"./utils/helper"}),
+            ('import parent from "../parent";', {"../parent"}),
+            ('import grandparent from "../../grand";', {"../../grand"}),
+            # With file extensions
+            ('import utils from "./utils.js";', {"./utils.js"}),
+            ('import styles from "./styles.css";', {"./styles.css"}),
+        ]
+        
+        for code, expected_deps in relative_import_cases:
+            with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert expected_deps.issubset(raw_imports), f"Failed for relative import: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+        
+        # Test extensionless imports that should resolve to various file types
+        extensionless_cases = [
+            ('import component from "./Component";', {"./Component"}),
+            ('import api from "./api/client";', {"./api/client"}),
+        ]
+        
+        for code, expected_deps in extensionless_cases:
+            with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert expected_deps.issubset(raw_imports), f"Failed for extensionless: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+        
+        # Test index file imports 
+        index_cases = [
+            ('import utils from "./utils/";', {"./utils/"}),
+            ('import components from "./components";', {"./components"}),  # Could resolve to ./components/index.js
+        ]
+        
+        for code, expected_deps in index_cases:
+            with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                assert expected_deps.issubset(raw_imports), f"Failed for index import: {code}. Got {raw_imports}, expected {expected_deps}"
             finally:
                 temp_path.unlink()
     
@@ -286,6 +491,44 @@ class TestDependencyParsing:
                 # Test raw parsing only (tree-sitter extraction)
                 raw_imports = dep_graph._parse_raw_imports(temp_path)
                 assert expected_deps.issubset(raw_imports), f"Failed for code: {code}. Got {raw_imports}, expected {expected_deps}"
+            finally:
+                temp_path.unlink()
+
+    def test_css_html_quote_stripping(self):
+        """Verify CSS/HTML quote stripping in @import 'x.css' and url('x.css') as requested."""
+        if "css" not in LANGUAGES:
+            pytest.skip("CSS language not available")
+        
+        dep_graph = DepGraph()
+        
+        # Test comprehensive quote stripping variations
+        quote_stripping_cases = [
+            # Single quotes
+            ("@import 'base.css';", {"base.css"}),
+            ("@import url('theme.css');", {"theme.css"}),
+            # Double quotes  
+            ('@import "base.css";', {"base.css"}),
+            ('@import url("theme.css");', {"theme.css"}),
+            # Mixed cases with different paths
+            ("@import 'styles/main.css';", {"styles/main.css"}),
+            ('@import url("../parent.css");', {"../parent.css"}),
+        ]
+        
+        for code, expected_deps in quote_stripping_cases:
+            with tempfile.NamedTemporaryFile(suffix=".css", mode="w", delete=False) as f:
+                f.write(code)
+                temp_path = pathlib.Path(f.name)
+            
+            try:
+                # Test raw parsing - quotes should be stripped by _parse_raw_imports
+                raw_imports = dep_graph._parse_raw_imports(temp_path)
+                
+                # Verify that quotes are completely stripped from the captured imports
+                for import_path in raw_imports:
+                    assert not import_path.startswith('"') and not import_path.endswith('"'), f"Double quotes not stripped: {import_path}"
+                    assert not import_path.startswith("'") and not import_path.endswith("'"), f"Single quotes not stripped: {import_path}"
+                
+                assert expected_deps.issubset(raw_imports), f"Failed for CSS quote stripping: {code}. Got {raw_imports}, expected {expected_deps}"
             finally:
                 temp_path.unlink()
 
@@ -515,6 +758,77 @@ class TestGraphBuilding:
         finally:
             temp_path.unlink()
 
+    def test_colliding_file_stems_unique_node_ids(self):
+        """Test that files with same stems in different directories get unique node IDs."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create temporary directory structure to simulate a/utils.py and b/utils.py
+            import tempfile
+            temp_dir = pathlib.Path(tempfile.mkdtemp())
+            
+            # Create a/utils.py
+            a_dir = temp_dir / "a"
+            a_dir.mkdir()
+            a_utils = a_dir / "utils.py"
+            a_utils.write_text("def func_a(): pass")
+            temp_files.append(a_utils)
+            
+            # Create b/utils.py  
+            b_dir = temp_dir / "b"
+            b_dir.mkdir()
+            b_utils = b_dir / "utils.py"
+            b_utils.write_text("def func_b(): pass")
+            temp_files.append(b_utils)
+            
+            # Create main.py that imports both
+            main_py = temp_dir / "main.py"
+            main_py.write_text("""
+import a.utils
+import b.utils
+""")
+            temp_files.append(main_py)
+            
+            # Build the graph
+            dep_graph.build([a_utils, b_utils, main_py])
+            
+            # Should have 3 nodes (each file gets unique project-relative path ID)
+            assert dep_graph.graph.number_of_nodes() == 3
+            
+            # Get file IDs - these should be project-relative paths, not stems
+            a_utils_id = dep_graph._get_file_id(a_utils)
+            b_utils_id = dep_graph._get_file_id(b_utils)
+            main_id = dep_graph._get_file_id(main_py)
+            
+            # Verify all files are in graph with unique IDs
+            assert a_utils_id in dep_graph.graph
+            assert b_utils_id in dep_graph.graph
+            assert main_id in dep_graph.graph
+            
+            # Critical: the two utils files should have different node IDs
+            assert a_utils_id != b_utils_id, f"Colliding stems should have unique IDs: {a_utils_id} vs {b_utils_id}"
+            
+            # Verify project-relative paths are used (not just stems)
+            assert "a/" in a_utils_id or "a\\" in a_utils_id, f"a/utils.py ID should contain directory: {a_utils_id}"
+            assert "b/" in b_utils_id or "b\\" in b_utils_id, f"b/utils.py ID should contain directory: {b_utils_id}"
+            
+            # Verify that dependencies are tracked correctly - main should depend on both utils
+            main_deps = dep_graph.get_direct_dependencies(main_py)
+            assert len(main_deps) == 2, f"main.py should depend on both utils files, got: {main_deps}"
+            assert a_utils_id in main_deps, f"main.py should depend on a/utils.py, deps: {main_deps}"
+            assert b_utils_id in main_deps, f"main.py should depend on b/utils.py, deps: {main_deps}"
+            
+        finally:
+            # Clean up temp files and directories
+            for temp_file in temp_files:
+                if temp_file.exists():
+                    temp_file.unlink()
+            # Clean up directories
+            if 'temp_dir' in locals():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 class TestGraphQuerying:
     """Test graph querying methods."""
@@ -676,6 +990,86 @@ class TestEdgeCasesAndErrorHandling:
         
         assert "B" in deps_a
         assert "A" in deps_b
+
+    def test_comprehensive_transitives_and_cycles(self):
+        """Test comprehensive transitives & cycles: A→B→C with cycle C→A, verify stability."""
+        dep_graph = DepGraph()
+        temp_files = []
+        
+        try:
+            # Create temporary directory structure for A→B→C with cycle C→A
+            import tempfile
+            temp_dir = pathlib.Path(tempfile.mkdtemp())
+            
+            # Create A.py that imports B
+            a_py = temp_dir / "A.py"
+            a_py.write_text("import B")
+            temp_files.append(a_py)
+            
+            # Create B.py that imports C
+            b_py = temp_dir / "B.py"
+            b_py.write_text("import C")
+            temp_files.append(b_py)
+            
+            # Create C.py that imports A (creating cycle)
+            c_py = temp_dir / "C.py"
+            c_py.write_text("import A")
+            temp_files.append(c_py)
+            
+            # Build the graph
+            dep_graph.build([a_py, b_py, c_py])
+            
+            # Should have 3 nodes and 3 edges (A→B, B→C, C→A)
+            assert dep_graph.graph.number_of_nodes() == 3
+            assert dep_graph.graph.number_of_edges() == 3
+            
+            # Get file IDs
+            a_id = dep_graph._get_file_id(a_py)
+            b_id = dep_graph._get_file_id(b_py)
+            c_id = dep_graph._get_file_id(c_py)
+            
+            # Verify direct dependencies
+            a_direct = dep_graph.get_direct_dependencies(a_py)
+            b_direct = dep_graph.get_direct_dependencies(b_py)
+            c_direct = dep_graph.get_direct_dependencies(c_py)
+            
+            assert b_id in a_direct, f"A should directly depend on B, got: {a_direct}"
+            assert c_id in b_direct, f"B should directly depend on C, got: {b_direct}"
+            assert a_id in c_direct, f"C should directly depend on A, got: {c_direct}"
+            
+            # Verify transitive dependencies (should handle cycles without infinite loops)
+            a_all = dep_graph.get_all_dependencies(a_py)
+            b_all = dep_graph.get_all_dependencies(b_py)
+            c_all = dep_graph.get_all_dependencies(c_py)
+            
+            # In a cycle, each node transitively depends on all others
+            assert b_id in a_all and c_id in a_all, f"A should transitively depend on B and C, got: {a_all}"
+            assert a_id in b_all and c_id in b_all, f"B should transitively depend on A and C, got: {b_all}"
+            assert a_id in c_all and b_id in c_all, f"C should transitively depend on A and B, got: {c_all}"
+            
+            # Verify transitive dependents (reverse direction)
+            a_dependents = dep_graph.get_all_dependents(a_py)
+            b_dependents = dep_graph.get_all_dependents(b_py)
+            c_dependents = dep_graph.get_all_dependents(c_py)
+            
+            # In a cycle, each node is transitively depended on by all others
+            assert b_id in a_dependents and c_id in a_dependents, f"A should be depended on by B and C, got: {a_dependents}"
+            assert a_id in b_dependents and c_id in b_dependents, f"B should be depended on by A and C, got: {b_dependents}"
+            assert a_id in c_dependents and b_id in c_dependents, f"C should be depended on by A and B, got: {c_dependents}"
+            
+            # Test stability: running the same queries multiple times should return the same results
+            for _ in range(3):
+                assert dep_graph.get_all_dependencies(a_py) == a_all, "all_dependencies should be stable"
+                assert dep_graph.get_all_dependents(a_py) == a_dependents, "all_dependents should be stable"
+            
+        finally:
+            # Clean up temp files and directories
+            for temp_file in temp_files:
+                if temp_file.exists():
+                    temp_file.unlink()
+            if 'temp_dir' in locals():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
     
     def test_very_large_dependency_graph(self):
         """Test performance with large graphs."""
@@ -760,6 +1154,90 @@ class TestEdgeCasesAndErrorHandling:
             
         finally:
             temp_path.unlink()
+
+    def test_comprehensive_error_cases(self):
+        """Test error cases: missing file (404), file outside root (400), unknown dep type (400)."""
+        dep_graph = DepGraph()
+        
+        # Test Case 1: Missing file (404-like scenario)
+        missing_file = pathlib.Path("/tmp/definitely_does_not_exist_12345.py")
+        
+        # Should handle missing files gracefully without raising exceptions
+        raw_imports = dep_graph._parse_raw_imports(missing_file)
+        assert raw_imports == set(), f"Missing file should return empty imports, got: {raw_imports}"
+        
+        dependencies = dep_graph._resolve_local_imports(missing_file)
+        assert dependencies == set(), f"Missing file should return empty dependencies, got: {dependencies}"
+        
+        # Graph queries for missing files should return empty sets
+        assert dep_graph.get_direct_dependencies(missing_file) == set()
+        assert dep_graph.get_direct_dependents(missing_file) == set()
+        assert dep_graph.get_all_dependencies(missing_file) == set()
+        assert dep_graph.get_all_dependents(missing_file) == set()
+        
+        # Test Case 2: File outside project root (400-like scenario)
+        import tempfile
+        temp_dir = pathlib.Path(tempfile.mkdtemp())
+        project_root = temp_dir / "project"
+        project_root.mkdir()
+        
+        outside_file = temp_dir / "outside.py"
+        outside_file.write_text("import os")
+        
+        inside_file = project_root / "inside.py"
+        inside_file.write_text("import json")
+        
+        try:
+            # Create dep_graph with specific project root
+            scoped_dep_graph = DepGraph(project_root=project_root)
+            
+            # Build with both files, but only inside file should be included in project
+            scoped_dep_graph.build([inside_file, outside_file])
+            
+            # Only the inside file should be in the graph
+            inside_id = scoped_dep_graph._get_file_id(inside_file)
+            outside_id = scoped_dep_graph._get_file_id(outside_file)
+            
+            # Inside file should be in graph with project-relative path
+            assert inside_id in scoped_dep_graph.graph, f"Inside file should be in graph: {inside_id}"
+            
+            # Outside file should either not be in graph or use absolute path
+            if outside_id in scoped_dep_graph.graph:
+                # If outside file is included, it should use absolute path
+                assert str(outside_file) in outside_id, f"Outside file should use absolute path: {outside_id}"
+            
+        finally:
+            # Clean up
+            outside_file.unlink()
+            inside_file.unlink()
+            project_root.rmdir()
+            temp_dir.rmdir()
+        
+        # Test Case 3: Unknown dependency type (400-like scenario)
+        # Test with file that has unsupported extension
+        with tempfile.NamedTemporaryFile(suffix=".unknown", mode="w", delete=False) as f:
+            f.write("some unknown content")
+            unknown_file = pathlib.Path(f.name)
+        
+        try:
+            # Should handle unknown file types gracefully
+            raw_imports = dep_graph._parse_raw_imports(unknown_file)
+            assert raw_imports == set(), f"Unknown file type should return empty imports, got: {raw_imports}"
+            
+            dependencies = dep_graph._resolve_local_imports(unknown_file)
+            assert dependencies == set(), f"Unknown file type should return empty dependencies, got: {dependencies}"
+            
+            # Adding unknown file type to graph should work (just no dependencies extracted)
+            dep_graph.add_or_update_file(unknown_file)
+            unknown_id = dep_graph._get_file_id(unknown_file)
+            assert unknown_id in dep_graph.graph, "Unknown file type should be added to graph"
+            
+            # But should have no dependencies
+            deps = dep_graph.get_direct_dependencies(unknown_file)
+            assert deps == set(), f"Unknown file type should have no dependencies, got: {deps}"
+            
+        finally:
+            unknown_file.unlink()
 
 
 class TestOverLinkingPrevention:
