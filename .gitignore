@@ -1,6 +1,12 @@
 
 # Ignore CodeChat config
 .codechat/
+.claude/settings.local.json
+
+# Python build artifacts
+*/dist/
+*/build/
+*.egg-info/
 
 # Claude Code settings (local/personal)
 .claude/settings.local.json

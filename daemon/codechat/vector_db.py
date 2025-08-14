@@ -20,11 +20,35 @@ class VectorDB:
         self._cache_dir = Path("/config/.cache/codechat")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._load()
+        self._validate_and_cleanup_stale_mappings()
 
     def _get_next_faiss_id(self) -> int:
         current_id = self._next_faiss_id
         self._next_faiss_id += 1
         return current_id
+
+    def _validate_and_cleanup_stale_mappings(self) -> None:
+        """Remove stale mappings where FAISS IDs are out of range."""
+        stale_paths = []
+        stale_faiss_ids = []
+        
+        # Check for FAISS IDs that are out of range
+        for path_str, faiss_id in self._path_to_faiss_id.items():
+            if faiss_id >= self.index.ntotal:
+                stale_paths.append(path_str)
+                stale_faiss_ids.append(faiss_id)
+        
+        # Clean up stale mappings
+        for path_str in stale_paths:
+            del self._path_to_faiss_id[path_str]
+            
+        for faiss_id in stale_faiss_ids:
+            if faiss_id in self.meta_data:
+                del self.meta_data[faiss_id]
+        
+        if stale_paths:
+            logger.info("Cleaned up stale FAISS mappings", count=len(stale_paths), 
+                       total_index_size=self.index.ntotal)
 
     # ---------- public --------------------------------------------------
     def add(self, path_str: str, file_hash: str, vector: List[float]) -> None:
@@ -149,11 +173,28 @@ class VectorDB:
     def get_vector_by_path(self, path_str: str) -> Optional[List[float]]:
         faiss_id = self._path_to_faiss_id.get(path_str)
         if faiss_id is not None and self.index.ntotal > 0:
+            # Validate FAISS ID is within valid range before attempting reconstruct
+            if faiss_id >= self.index.ntotal:
+                logger.debug("FAISS ID out of range, cleaning up stale mapping.", 
+                           path=path_str, faiss_id=faiss_id, ntotal=self.index.ntotal)
+                # Clean up stale mapping
+                if faiss_id in self.meta_data:
+                    del self.meta_data[faiss_id]
+                if path_str in self._path_to_faiss_id:
+                    del self._path_to_faiss_id[path_str]
+                return None
+                
             try:
                 # IndexIDMap.reconstruct takes a single ID
                 reconstructed_vector = self.index.index.reconstruct(faiss_id) # Call reconstruct on the underlying index
                 if reconstructed_vector is not None and reconstructed_vector.size > 0:
                     return reconstructed_vector.flatten().tolist()
             except RuntimeError as e: 
-                logger.warning("FAISS reconstruct failed for path, ID might be stale or removed.", path=path_str, faiss_id=faiss_id, error=e)
+                logger.warning("FAISS reconstruct failed for path, ID might be stale or removed.", 
+                             path=path_str, faiss_id=faiss_id, error=e)
+                # Clean up stale mapping on error
+                if faiss_id in self.meta_data:
+                    del self.meta_data[faiss_id]
+                if path_str in self._path_to_faiss_id:
+                    del self._path_to_faiss_id[path_str]
         return None

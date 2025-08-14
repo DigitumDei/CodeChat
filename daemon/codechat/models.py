@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Set
 from pydantic import BaseModel, Field 
 
 class ProviderType(str, Enum):
@@ -51,3 +51,21 @@ class QueryRequest(BaseModel):
         default=None,
         description="Optional list of file paths relevant to the query, provided by the client"
     )
+
+
+class DependencyType(str, Enum):
+    DIRECT_DEPENDENCIES = "direct_dependencies"
+    DIRECT_DEPENDENTS = "direct_dependents" 
+    ALL_DEPENDENCIES = "all_dependencies"
+    ALL_DEPENDENTS = "all_dependents"
+
+
+class DependencyRequest(BaseModel):
+    file_path: str = Field(..., description="Path to the file to analyze dependencies for")
+    dependency_type: DependencyType = Field(..., description="Type of dependency relationship to query")
+
+
+class DependencyResponse(BaseModel):
+    file_path: str = Field(..., description="The file path that was analyzed")
+    dependency_type: DependencyType = Field(..., description="The type of dependency relationship queried")
+    dependencies: Set[str] = Field(..., description="Set of dependency identifiers found")
