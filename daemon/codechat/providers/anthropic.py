@@ -45,7 +45,8 @@ class AnthropicProvider(ProviderInterface):
                 max_tokens=1024,
                 messages=messages
             )
-            return {"text": response.content[0].text}
+            return {"text": getattr(response.content[0],"text", "")}
+ 
         except APIStatusError as e:
             # Handle Anthropic specific API errors (includes 4xx/5xx from their API)
             status_code = e.status_code
@@ -65,20 +66,33 @@ class AnthropicProvider(ProviderInterface):
         messages = self.prompt.make_chat_prompt(req)
         system_prompt_content = self.prompt.get_system_prompt()
 
-        # This inner function is the actual async generator
-        async def _chunk_generator() -> AsyncIterator[str]:           
+        try:
             async with self._async_client().messages.stream(
                     model=req.model,
                     system=system_prompt_content,
                     messages=messages,
                     max_tokens=1024  # Consider making this configurable
                 ) as stream:
-                    async for text_chunk in stream.text_stream:
-                        yield json.dumps({"token": text_chunk, "finish": False})
+                async for chunk in stream:
+                    if chunk.type == "input_json":
+                        logger.debug("Function call chunk received, currently unsupported", chunk=chunk)
+                        continue
+                    if chunk.type == "text":
+                        yield json.dumps({"token": chunk.text, "finish": False})
 
-                    yield json.dumps({"token": "", "finish": True})
-
-        return _chunk_generator()
+                yield json.dumps({"token": "", "finish": True})
+        except APIStatusError as e:
+            logger.error(
+                "Anthropic API error during stream",
+                status_code=e.status_code,
+                detail=e.message,
+                response=e.response.text if e.response else "N/A",
+                exc_info=True
+            )
+            raise HTTPException(status_code=e.status_code, detail=f"Anthropic API error: {e.message}")
+        except Exception as e:
+            logger.error("Unexpected error during Anthropic stream processing", exception=str(e), exc_info=True)
+            raise HTTPException(status_code=500, detail="An unexpected error occurred during streaming.")
 
 # register on import
 register(AnthropicProvider())

@@ -6,8 +6,12 @@ logger = structlog.get_logger(__name__)
 class ProviderInterface(Protocol):
     name: str                # "openai", "anthropic",
 
-    def send(self, req: QueryRequest) -> dict:             ...
-    async def stream(self, req: QueryRequest) -> AsyncIterator[str]: ...    
+    def send(self, req: QueryRequest) -> dict:
+        ...
+
+    def stream(self, req: QueryRequest) -> AsyncIterator[str]:
+        """Returns an async iterator to stream the response."""
+        ...
 
 _registry: dict[str, ProviderInterface] = {}
 
@@ -25,4 +29,3 @@ def all() -> dict[str, ProviderInterface]:
 from . import openai # noqa: F401, E402
 from . import anthropic # noqa: F401, E402
 from . import google # noqa: F401, E402
-from . import azure # noqa: F401, E402

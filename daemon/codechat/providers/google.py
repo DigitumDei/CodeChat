@@ -29,8 +29,8 @@ class GoogleProvider(ProviderInterface):
             logger.warning("Google Gemini API key not found in config")
             raise ValueError("Google Gemini API key not found in config, call codechat config set gemini.key sk-…")
 
-    def populate_message(self, req: QueryRequest) -> list[types.Part]:
-        context_parts: list[types.Part] = []
+    def populate_message(self, req: QueryRequest) -> list[types.PartUnionDict]:
+        context_parts: list[types.PartUnionDict] = []
         if req.context.snippets:                
             for snippet in req.context.snippets:
                 snippet_text = f"{snippet.type.value}\n{snippet.content}"
@@ -62,24 +62,40 @@ class GoogleProvider(ProviderInterface):
             raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:
+        history = self.prompt.make_chat_prompt(req)
+        config = types.GenerateContentConfig(system_instruction=self.prompt.get_system_prompt())
+        chat = self._client().aio.chats.create(model=req.model, history=history, config=config)
 
-        # This inner function is the actual async generator
-        async def _chunk_generator() -> AsyncIterator[str]:
-            history = self.prompt.make_chat_prompt(req)
-            config = types.GenerateContentConfig(system_instruction=self.prompt.get_system_prompt())
-            chat = self._client().aio.chats.create(model=req.model, history=history, config=config)            
+        try:                                               
+            # The google-genai library's type hints are incorrect, suggesting a "double await"
+            # is needed. At runtime, a single await returns the async iterator directly.
+            # To fix the type hint for Pylance and get autocomplete on the `chunk` variable,
+            # we assign the result to a variable that is explicitly typed.
+            stream: AsyncIterator[types.GenerateContentResponse]
+            stream = await chat.send_message_stream(self.populate_message(req))  # type: ignore
 
-            try:
-                async for chunk in await chat.send_message_stream(self.populate_message(req)):
-                    token_text = chunk.text
-                    if token_text: # Ensure we don't send empty updates
-                        yield json.dumps({"token": token_text, "finish": False})
-                yield json.dumps({"token": "", "finish": True}) # Signal completion
-            except Exception as e:
-                logger.error("Google GenAI stream error", exc_info=e, model=req.model)
-                    
-
-        return _chunk_generator()
+            async for chunk in stream:    
+                if (chunk.function_calls and len(chunk.function_calls) > 0):
+                    logger.debug("Function call chunk received, currently unsupported", chunk=chunk)
+                    continue          
+                token_text = chunk.text
+                if token_text:  # Ensure we don't send empty updates
+                    yield json.dumps({"token": token_text, "finish": False})
+            yield json.dumps({"token": "", "finish": True})  # Signal completion
+        except errors.APIError as e:
+            status_code = getattr(e, 'code', 500)
+            detail = f"Google API error: {e.message}"
+            logger.error(
+                "Google API error during stream",
+                status_code=status_code,
+                detail=detail,
+                response=getattr(e, 'response', "N/A"),
+                exc_info=True
+            )
+            raise HTTPException(status_code=status_code, detail=detail)
+        except Exception as e:
+            logger.error("Unexpected error during Google stream processing", exception=str(e), exc_info=True)
+            raise HTTPException(status_code=500, detail="An unexpected error occurred during streaming.")
 
 # register on import
 register(GoogleProvider())

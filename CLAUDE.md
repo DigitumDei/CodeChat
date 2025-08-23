@@ -121,3 +121,4 @@ Pluggable backends supporting:
 - File watching uses `watchdog` library for cross-platform compatibility
 - Git integration available when GitPython is installed (optional dependency)
 - Structured logging via `structlog` throughout the daemon
+- use gh.exe

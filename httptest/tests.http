@@ -2,12 +2,12 @@
 
 # openai
 @gptprovider="openai"
-@gpt-4o="gpt-4o"
+@gpt-5-nano="gpt-5-nano"
 @gpt-o4-mini="o4-mini"
 
 # anthropic
 @claudeprovider="anthropic"
-@claude-37="claude-3-7-sonnet-latest"
+@claude-37="claude-sonnet-4-20250514"
 @claude-35-haiku="claude-3-5-haiku-latest"
 
 # google
@@ -19,8 +19,8 @@ POST  http://localhost:16005/query
 Content-Type: application/json
 
 {
-    "provider":{{claudeprovider}}, 
-    "model":{{claude-35-haiku}}, 
+    "provider":{{gptprovider}}, 
+    "model":{{gpt-5-nano}}, 
     "history":[{
         "role":"user",
         "content":"Hello, my name is Dion, I'm trying to test you memory."
@@ -46,8 +46,8 @@ Content-Type: application/json
 Accept: text/event-stream
 
 {
-    "provider":{{claudeprovider}}, 
-    "model":{{claude-37}}, 
+    "provider":{{gptprovider}}, 
+    "model":{{gpt-5-nano}}, 
     "history":[], 
     "message":"In lmm_router.py, who calls def route(self, req: QueryRequest) and where does that get routed to?",
     "files":["/workspace/daemon/codechat/llm_router.py"]

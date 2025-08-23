@@ -82,7 +82,7 @@ class LLMRouter:
         try:
             provider_instance = get_provider(req.provider.value)
             self._ensure_context(req)
-            async for chunk in await provider_instance.stream(req):
+            async for chunk in provider_instance.stream(req):
                 yield chunk
         except ValueError as ve: # Handles errors like provider not found or initial config errors from provider
             logger.error("ValueError during stream setup in LLMRouter", detail=str(ve), exc_info=True)
