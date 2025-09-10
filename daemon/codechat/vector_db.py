@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 import pickle
 import structlog
-from typing import Optional, List, Dict, Any # For type hinting
+from typing import Optional, List, Dict, Any, cast # For type hinting
 
 logger = structlog.get_logger(__name__)
 
@@ -28,15 +28,25 @@ class VectorDB:
         return current_id
 
     def _validate_and_cleanup_stale_mappings(self) -> None:
-        """Remove stale mappings where FAISS IDs are out of range."""
+        """Remove stale mappings where FAISS IDs don't exist in the index."""
         stale_paths = []
         stale_faiss_ids = []
-        
-        # Check for FAISS IDs that are out of range
-        for path_str, faiss_id in self._path_to_faiss_id.items():
-            if faiss_id >= self.index.ntotal:
-                stale_paths.append(path_str)
-                stale_faiss_ids.append(faiss_id)
+
+        present_ids = self._get_present_ids()
+        # If we can query present IDs directly, use that; otherwise fall back to reconstruct probing
+        if present_ids is not None:
+            for path_str, faiss_id in list(self._path_to_faiss_id.items()):
+                if faiss_id not in present_ids:
+                    stale_paths.append(path_str)
+                    stale_faiss_ids.append(faiss_id)
+        else:
+            # Fallback: probe by reconstructing
+            for path_str, faiss_id in self._path_to_faiss_id.items():
+                try:
+                    _ = self._reconstruct_by_id(faiss_id)
+                except Exception:
+                    stale_paths.append(path_str)
+                    stale_faiss_ids.append(faiss_id)
         
         # Clean up stale mappings
         for path_str in stale_paths:
@@ -62,7 +72,8 @@ class VectorDB:
         vec_np = np.asarray(vector, dtype="float32").reshape(1, -1)
         ids_np = np.array([faiss_id], dtype='int64')
 
-        self.index.add_with_ids(vec_np, ids_np)
+        # Newer faiss Python bindings expect (x, ids). Cast to Any to satisfy type checkers.
+        cast(Any, self.index).add_with_ids(vec_np, ids_np)  # type: ignore
         self.meta_data[faiss_id] = meta
         self._path_to_faiss_id[path_str] = faiss_id
         logger.debug("Added to VectorDB", path=path_str, faiss_id=faiss_id, hash=file_hash)
@@ -98,7 +109,7 @@ class VectorDB:
         if self.index.ntotal == 0:
             return []
         vec_np = np.asarray(vector, dtype="float32").reshape(1, -1)
-        distances, faiss_ids = self.index.search(vec_np, top_k) # faiss_ids are our custom IDs
+        distances, faiss_ids = self.index.search(vec_np, k=top_k)  # type: ignore # faiss_ids are our custom IDs
 
         results = []
         for i in range(len(faiss_ids[0])):
@@ -132,9 +143,27 @@ class VectorDB:
         if idx_p.exists() and meta_plus_p.exists():
             try:
                 self.index = faiss.read_index(str(idx_p))
-                # Ensure the loaded index is an IndexIDMap and its sub-index has the correct dimension
-                if not isinstance(self.index, faiss.IndexIDMap) or self.index.index.d != self.dim:
-                    logger.warning(f"Loaded index type/dimension mismatch. Expected IndexIDMap with dim {self.dim}, got {type(self.index)} with dim {getattr(self.index.index, 'd', 'N/A')}. Re-initializing.")
+
+                # Accept both IndexIDMap and IndexIDMap2 (varies by faiss version)
+                acceptable_types = []
+                if hasattr(faiss, "IndexIDMap"):
+                    acceptable_types.append(getattr(faiss, "IndexIDMap"))
+                if hasattr(faiss, "IndexIDMap2"):
+                    acceptable_types.append(getattr(faiss, "IndexIDMap2"))
+
+                is_acceptable = any(isinstance(self.index, t) for t in acceptable_types) if acceptable_types else False
+
+                # Dimension check: look at the wrapped sub‑index if present, else the index itself
+                sub_index = getattr(self.index, "index", None)
+                loaded_dim = getattr(sub_index, "d", None) if sub_index is not None else getattr(self.index, "d", None)
+
+                if (not is_acceptable) or (loaded_dim is not None and loaded_dim != self.dim):
+                    logger.warning(
+                        "Loaded FAISS index type/dimension mismatch. Re-initializing.",
+                        expected_dim=self.dim,
+                        loaded_type=str(type(self.index)),
+                        loaded_dim=loaded_dim,
+                    )
                     self.index = faiss.IndexIDMap(faiss.IndexFlatL2(self.dim))
                     self.meta_data = {}
                     self._path_to_faiss_id = {}
@@ -146,7 +175,15 @@ class VectorDB:
                     self.meta_data = persistence_data.get("meta_data", {})
                     self._path_to_faiss_id = persistence_data.get("_path_to_faiss_id", {})
                     self._next_faiss_id = persistence_data.get("_next_faiss_id", 0)
-                logger.info("VectorDB loaded from disk.", index_size=self.index.ntotal, meta_count=len(self.meta_data), next_id=self._next_faiss_id)
+                logger.info(
+                    "VectorDB loaded from disk.",
+                    index_size=self.index.ntotal,
+                    meta_count=len(self.meta_data),
+                    path_map_count=len(self._path_to_faiss_id),
+                    next_id=self._next_faiss_id,
+                    cache_dir=str(self._cache_dir),
+                    index_type=str(type(self.index)),
+                )
 
             except Exception as e:
                 logger.error("Failed to load VectorDB from disk. Re-initializing.", error=e, exc_info=True)
@@ -173,23 +210,12 @@ class VectorDB:
     def get_vector_by_path(self, path_str: str) -> Optional[List[float]]:
         faiss_id = self._path_to_faiss_id.get(path_str)
         if faiss_id is not None and self.index.ntotal > 0:
-            # Validate FAISS ID is within valid range before attempting reconstruct
-            if faiss_id >= self.index.ntotal:
-                logger.debug("FAISS ID out of range, cleaning up stale mapping.", 
-                           path=path_str, faiss_id=faiss_id, ntotal=self.index.ntotal)
-                # Clean up stale mapping
-                if faiss_id in self.meta_data:
-                    del self.meta_data[faiss_id]
-                if path_str in self._path_to_faiss_id:
-                    del self._path_to_faiss_id[path_str]
-                return None
-                
             try:
-                # IndexIDMap.reconstruct takes a single ID
-                reconstructed_vector = self.index.index.reconstruct(faiss_id) # Call reconstruct on the underlying index
+                # Reconstruct via the ID‑map wrapper (external ID)
+                reconstructed_vector = self._reconstruct_by_id(faiss_id)
                 if reconstructed_vector is not None and reconstructed_vector.size > 0:
                     return reconstructed_vector.flatten().tolist()
-            except RuntimeError as e: 
+            except Exception as e: 
                 logger.warning("FAISS reconstruct failed for path, ID might be stale or removed.", 
                              path=path_str, faiss_id=faiss_id, error=e)
                 # Clean up stale mapping on error
@@ -198,3 +224,69 @@ class VectorDB:
                 if path_str in self._path_to_faiss_id:
                     del self._path_to_faiss_id[path_str]
         return None
+
+    # ---------- helpers for FAISS API variants -------------------------
+    def _get_ids_array(self) -> Optional[np.ndarray]:
+        """Return numpy array of present external IDs if available, else None."""
+        try:
+            if hasattr(self.index, "id_map"):
+                # Convert Faiss vector to numpy array if needed
+                id_map = getattr(self.index, "id_map")
+                # Some builds expose directly as numpy array; others require helper
+                try:
+                    import faiss as _faiss
+                    return _faiss.vector_to_array(id_map).copy()  # type: ignore[attr-defined]
+                except Exception:
+                    # If already an ndarray
+                    if isinstance(id_map, np.ndarray):
+                        return id_map.copy()
+        except Exception:
+            return None
+        return None
+
+    def _get_present_ids(self) -> Optional[set[int]]:
+        ids = self._get_ids_array()
+        if ids is None:
+            return None
+        try:
+            return set(map(int, ids.tolist()))
+        except Exception:
+            return None
+
+    def _reconstruct_by_id(self, faiss_id: int):
+        """Reconstruct a single vector by external ID, robust across FAISS API variants.
+
+        Strategy:
+        1) If we can get the id_map: find the internal position of the ID and reconstruct
+           from the wrapped sub‑index by position.
+        2) Else, try direct reconstruct(id) and fallback to reconstruct(id, out).
+        """
+        ids = self._get_ids_array()
+        sub_index = getattr(self.index, "index", None) or self.index
+
+        if ids is not None:
+            # Find internal position for the given external ID
+            matches = np.where(ids == faiss_id)[0]
+            if matches.size == 0:
+                raise KeyError(f"ID {faiss_id} not present in index")
+            pos = int(matches[0])
+            try:
+                vec = cast(Any, sub_index).reconstruct(pos)
+                if vec is not None:
+                    return np.asarray(vec, dtype="float32")
+            except TypeError:
+                out = np.empty(self.dim, dtype="float32")
+                cast(Any, sub_index).reconstruct(pos, out)
+                return out
+
+        # Fallback path: attempt reconstruct by external ID on the wrapper
+        try:
+            vec = cast(Any, self.index).reconstruct(faiss_id)
+            if vec is not None:
+                return np.asarray(vec, dtype="float32")
+        except TypeError:
+            out = np.empty(self.dim, dtype="float32")
+            cast(Any, self.index).reconstruct(faiss_id, out)
+            return out
+
+        raise RuntimeError("Unable to reconstruct vector for id", faiss_id)

@@ -9,14 +9,11 @@ from codechat.vector_db import VectorDB
 from codechat.dep_graph import DepGraph
 from codechat.config import get_config
 
-GIT_PYTHON_AVAILABLE = False
-try:
-    import git
-    from git.exc import InvalidGitRepositoryError, NoSuchPathError, GitCommandError
-    GIT_PYTHON_AVAILABLE = True
-except ImportError:
-    # GitPython library itself is not installed.
-    pass # GIT_PYTHON_AVAILABLE remains False
+
+import git
+from git.exc import InvalidGitRepositoryError, NoSuchPathError, GitCommandError
+
+
 
 
 logger = structlog.get_logger(__name__)
@@ -33,20 +30,19 @@ class Indexer:
         self._actual_openai_client: Optional[OpenAI] = None 
         self.repo: Optional[git.Repo] = None
 
-        if GIT_PYTHON_AVAILABLE:
-            try:
-                self.repo = git.Repo(self.root, search_parent_directories=True)
-                logger.info("Git repository detected.", repo_root=str(self.repo.working_dir))
-            except InvalidGitRepositoryError:
-                logger.info("Project root is not a Git repository. Git-based filtering for single events will not be used.", project_root=str(self.root))
-            except NoSuchPathError:
-                logger.error("Project root path does not exist for GitPython.", project_root=str(self.root))
-            except GitCommandError as e: # This can happen if git executable is not found
-                logger.warning("Git command error during Indexer initialization. Git-based filtering may be unavailable.", error=str(e), project_root=str(self.root))
-            except Exception as e: # Catch any other unexpected error from GitPython
-                logger.error("Unexpected error initializing Git repository. Git-based filtering may be unavailable.", error=str(e), project_root=str(self.root))
-        else:
-            logger.info("GitPython library not available. Git-based filtering will not be used.")
+
+        try:
+            self.repo = git.Repo(self.root, search_parent_directories=True)
+            logger.info("Git repository detected.", repo_root=str(self.repo.working_dir))
+        except InvalidGitRepositoryError:
+            logger.info("Project root is not a Git repository. Git-based filtering for single events will not be used.", project_root=str(self.root))
+        except NoSuchPathError:
+            logger.error("Project root path does not exist for GitPython.", project_root=str(self.root))
+        except GitCommandError as e: # This can happen if git executable is not found
+            logger.warning("Git command error during Indexer initialization. Git-based filtering may be unavailable.", error=str(e), project_root=str(self.root))
+        except Exception as e: # Catch any other unexpected error from GitPython
+            logger.error("Unexpected error initializing Git repository. Git-based filtering may be unavailable.", error=str(e), project_root=str(self.root))
+
 
         self.build_index() # Perform initial full index build
 
@@ -253,9 +249,6 @@ class Indexer:
             except Exception as e: # Catch any other unexpected error from GitPython
                 logger.error("Unexpected error during Git file discovery for full build. Falling back to rglob.", project_root=str(self.root), error=str(e))
         
-        if not GIT_PYTHON_AVAILABLE and not self.repo: # Log if GitPython itself wasn't even available
-             logger.info("GitPython library not available. build_index falling back to rglob.")
-
         if not git_used_for_discovery: # Fallback if GitPython not available or if Git discovery failed
             logger.info("Using rglob to discover project files (fallback).", reason="Git not used or fallback triggered")
             discovered_files = [p for p in self.root.rglob("*") if p.is_file()]
@@ -311,7 +304,7 @@ class Indexer:
                     else:
                         num_skipped_no_embedding += 1
             else:
-                logger.debug("File new or changed, creating new embedding", path=path_str)
+                logger.debug("File new or changed, creating new embedding", oldhash=old_meta_item, newhash=current_hash, path=path_str)
                 vec = self._get_embedding(text_for_embedding)
                 if vec:
                     temp_new_vdb.add(path_str=path_str, file_hash=current_hash, vector=vec)
