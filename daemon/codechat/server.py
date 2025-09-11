@@ -69,7 +69,14 @@ async def handle_query(query: QueryRequest, stream: bool = Query(default=False),
         result = router.process_request_with_functions(query)
     else:
         result = router.route(query)
-    return result.get("text")
+
+    text = result.get("text")
+    if text is None:
+        err = HTTPException(status_code=500, detail="Provider response missing 'text' field")
+        err.code = "INVALID_PROVIDER_RESPONSE"  # type: ignore[attr-defined]
+        raise err
+
+    return text
 
 
 @app.post("/admin/reload-config")
