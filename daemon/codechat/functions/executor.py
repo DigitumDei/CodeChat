@@ -19,6 +19,22 @@ class FunctionExecutor:
         self._pool = ThreadPoolExecutor(max_workers=max_workers)
         self._max_output_bytes = max_output_bytes
 
+    def close(self) -> None:
+        """Shut down the underlying thread pool."""
+        self._pool.shutdown(wait=True)
+
+    def __enter__(self) -> "FunctionExecutor":  # noqa: D401 - part of context manager
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # noqa: D401 - part of context manager
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def _truncate_output(self, value: Any) -> Any:
         try:
             data = value if isinstance(value, (bytes, bytearray)) else str(value).encode("utf-8", errors="replace")
