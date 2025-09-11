@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from codechat.providers import ProviderInterface, register
 from codechat.prompt import PromptManager
 from codechat.models import QueryRequest
+from codechat.functions.models import FunctionDefinition, FunctionCall
 
 import structlog
 
@@ -60,6 +61,59 @@ class AnthropicProvider(ProviderInterface):
                 model=req.model,
                 exc_info=True 
             )
+            raise HTTPException(status_code=status_code, detail=detail)
+
+    # --- function calling (non-stream) ---------------------------------
+    def _translate_tools(self, functions: list[FunctionDefinition]) -> list[dict]:
+        tools: list[dict] = []
+        for f in functions:
+            tools.append({
+                "name": f.name,
+                "description": f.description,
+                "input_schema": f.parameters or {"type": "object", "properties": {}, "additionalProperties": False},
+            })
+        return tools
+
+    def invoke_with_tools(self, req: QueryRequest, functions: list[FunctionDefinition]) -> dict:
+        """Call Anthropic with tool definitions; return text or function_calls."""
+        messages = self.prompt.make_chat_prompt(req)
+        tools = self._translate_tools(functions)
+
+        try:
+            response = self._client().messages.create(
+                model=req.model,
+                system=self.prompt.get_system_prompt(),
+                max_tokens=1024,
+                messages=messages,
+                tools=tools,
+            )
+            # Parse content blocks
+            calls: list[FunctionCall] = []
+            for block in getattr(response, "content", []) or []:
+                btype = getattr(block, "type", None)
+                if btype in ("tool_use", "input_json"):
+                    name = getattr(block, "name", None)
+                    args = getattr(block, "input", None) or {}
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {"_raw": args}
+                    if name:
+                        calls.append(FunctionCall(name=name, arguments=args))
+            if calls:
+                return {"function_calls": calls}
+
+            # Otherwise return text
+            text = ""
+            content0 = (getattr(response, "content", []) or [])
+            if content0:
+                text = getattr(content0[0], "text", "") or ""
+            return {"text": text}
+        except APIStatusError as e:
+            status_code = e.status_code
+            detail = f"Anthropic API error: {e.message}"
+            logger.error("Anthropic API error (tools)", status_code=status_code, detail=detail, exc_info=True)
             raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:

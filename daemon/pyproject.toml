@@ -39,6 +39,7 @@ mypy   = "^1.15"
 types-networkx = "^3.4"
 types-requests = "^2.32"
 types-tree-sitter-languages = "^1.10"
+pytest-asyncio = "^0.23"
 
 [build-system]
 requires = ["poetry-core>=1.7.1"]

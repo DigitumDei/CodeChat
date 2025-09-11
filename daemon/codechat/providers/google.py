@@ -7,6 +7,7 @@ from codechat.prompt import PromptManager
 from codechat.models import QueryRequest
 from google import genai
 from google.genai import types, errors
+from codechat.functions.models import FunctionDefinition, FunctionCall
 
 import structlog
 
@@ -59,6 +60,53 @@ class GoogleProvider(ProviderInterface):
                 model=req.model,
                 exc_info=True 
             )
+            raise HTTPException(status_code=status_code, detail=detail)
+
+    # --- function calling (non-stream) ---------------------------------
+    def _translate_tools(self, functions: list[FunctionDefinition]) -> list[types.Tool]:
+        tools: list[types.Tool] = []
+        decls: list[types.FunctionDeclaration] = []
+        for f in functions:
+            # The SDK expects a Schema; at runtime it accepts plain dicts. Silence type checker.
+            decls.append(types.FunctionDeclaration(
+                name=f.name,
+                description=f.description,
+                parameters=f.parameters or {"type": "object", "properties": {}, "additionalProperties": False},  # type: ignore[arg-type]
+            ))
+        tools.append(types.Tool(function_declarations=decls))
+        return tools
+
+    def invoke_with_tools(self, req: QueryRequest, functions: list[FunctionDefinition]) -> dict:
+        """Call Google Gemini with function declarations; return text or function_calls."""
+        history = self.prompt.make_chat_prompt(req)
+        tools = self._translate_tools(functions)
+        # The default tool-calling mode is typically AUTO; avoid strict typing issues by omitting config specifics.
+        config = types.GenerateContentConfig(
+            system_instruction=self.prompt.get_system_prompt(),
+            tools=tools,  # type: ignore[arg-type]
+        )
+        chat = self._client().chats.create(model=req.model, history=history, config=config)
+        try:
+            response = chat.send_message(self.populate_message(req))
+
+            # Parse function calls if present
+            calls: list[FunctionCall] = []
+            if getattr(response, "function_calls", None):
+                for fc in response.function_calls:
+                    name = getattr(fc, "name", None)
+                    # args may be dict already
+                    args = getattr(fc, "args", {}) or {}
+                    if name:
+                        calls.append(FunctionCall(name=name, arguments=args))
+            if calls:
+                return {"function_calls": calls}
+
+            # Otherwise return text
+            return {"text": getattr(response, "text", "")}
+        except errors.APIError as e:
+            status_code = e.code
+            detail = f"Google API error: {e.message}"
+            logger.error("Google API error (tools)", status_code=status_code, detail=detail, exc_info=True)
             raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:

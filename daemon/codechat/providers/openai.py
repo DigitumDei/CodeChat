@@ -6,6 +6,7 @@ from openai import OpenAI, AsyncOpenAI, APIStatusError  # type: ignore[attr-defi
 from codechat.providers import ProviderInterface, register
 from codechat.prompt import PromptManager
 from codechat.models import QueryRequest
+from codechat.functions.models import FunctionDefinition, FunctionCall
 
 import structlog
 
@@ -56,6 +57,94 @@ class OpenAIProvider(ProviderInterface):
                 model=req.model,
                 exc_info=True 
             )
+            raise HTTPException(status_code=status_code, detail=detail)
+
+    # --- function calling (non-stream) ---------------------------------
+    def _translate_tools(self, functions: list[FunctionDefinition]) -> list[dict]:
+        tools: list[dict] = []
+        for f in functions:
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": f.name,
+                    "description": f.description,
+                    "parameters": f.parameters or {"type": "object", "properties": {}, "additionalProperties": False},
+                }
+            })
+        return tools
+
+    def invoke_with_tools(self, req: QueryRequest, functions: list[FunctionDefinition]) -> dict:
+        """Call OpenAI with tool definitions; return text or function_calls.
+
+        Returns one of:
+          {"text": str}
+          {"function_calls": list[FunctionCall]}
+        """
+        messages = self.prompt.make_chat_prompt(req)
+        tools = self._translate_tools(functions)
+
+        try:
+            resp = self._client().responses.create(
+                model=req.model,
+                input=messages,
+                tools=tools,
+            )
+
+            # Prefer text if present
+            output_text = getattr(resp, "output_text", None)
+            if output_text:
+                return {"text": output_text}
+
+            # Attempt to extract function calls from structured output
+            calls: list[FunctionCall] = []
+            # Try common shapes defensively
+            output = getattr(resp, "output", None)
+            if output:
+                for item in output:
+                    # Responses SDK often has item.type and .content or .name/.arguments for tool use
+                    item_type = getattr(item, "type", None) or (isinstance(item, dict) and item.get("type"))
+                    if item_type in ("tool_use", "function_call"):
+                        name = getattr(item, "name", None) or (isinstance(item, dict) and item.get("name"))
+                        arguments = getattr(item, "arguments", None) or (isinstance(item, dict) and item.get("arguments")) or {}
+                        call_id_raw = getattr(item, "id", None) or (isinstance(item, dict) and item.get("id"))
+                        call_id: str | None
+                        if call_id_raw is None or call_id_raw is False:
+                            call_id = None
+                        else:
+                            call_id = str(call_id_raw)
+                        # Some variants embed JSON arguments as string
+                        if isinstance(arguments, str):
+                            try:
+                                arguments = json.loads(arguments)
+                            except Exception:
+                                arguments = {"_raw": arguments}
+                        if name:
+                            calls.append(FunctionCall(name=name, arguments=arguments, call_id=call_id))
+
+            # Fallback: some models expose top-level tool_calls
+            tool_calls = getattr(resp, "tool_calls", None)
+            if tool_calls:
+                for tc in tool_calls:
+                    fn = getattr(tc, "function", None) or {}
+                    name = getattr(fn, "name", None) or (isinstance(fn, dict) and fn.get("name"))
+                    args = getattr(fn, "arguments", None) or (isinstance(fn, dict) and fn.get("arguments")) or {}
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {"_raw": args}
+                    if name:
+                        calls.append(FunctionCall(name=name, arguments=args))
+
+            if calls:
+                return {"function_calls": calls}
+
+            # If nothing recognized, return empty text
+            return {"text": ""}
+        except APIStatusError as e:
+            status_code = e.status_code
+            detail = f"OpenAI API error: {e.message}"
+            logger.error("OpenAI API error (tools)", status_code=status_code, detail=detail, exc_info=True)
             raise HTTPException(status_code=status_code, detail=detail)
 
     async def stream(self, req: QueryRequest) -> AsyncIterator[str]:

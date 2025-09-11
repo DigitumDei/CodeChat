@@ -48,9 +48,15 @@ def health_check():
     return {"status": "ok"}
 
 @app.post("/query")
-async def handle_query(query: QueryRequest, stream: bool = Query(default=False)):
+async def handle_query(query: QueryRequest, stream: bool = Query(default=False), tools: bool = Query(default=False)):
     if stream:
         async def event_stream():
+            if tools:
+                async for chunk in router.stream_with_functions(query):
+                    chunkjson = json.loads(chunk)
+                    if chunkjson.get("token"):
+                        yield chunkjson.get("token")
+                return
             async for chunk in router.stream(query):
                 #convert chunk back to json
                 chunkjson = json.loads(chunk)
@@ -59,7 +65,10 @@ async def handle_query(query: QueryRequest, stream: bool = Query(default=False))
 
         return StreamingResponse(event_stream(),
                                  media_type="text/event-stream")
-    result = router.route(query)
+    if tools:
+        result = router.process_request_with_functions(query)
+    else:
+        result = router.route(query)
     return result.get("text")
 
 
