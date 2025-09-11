@@ -80,7 +80,8 @@ async def reload_config():
     logger = structlog.get_logger("server.reload_config")
     try:
         logger.info("Reloading configuration.")
-        set_config() # Call set_config on the existing instance
+        set_config()  # Reload global configuration
+        router.reload_config()
         logger.info("Configuration reloaded.")
         return {"message": "Configuration reloaded successfully"}
     except Exception as e:
