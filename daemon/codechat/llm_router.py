@@ -122,55 +122,55 @@ class LLMRouter:
                     yield chunk
                 return
 
-            executor = FunctionExecutor()
-            ctx = ExecutionContext(root=self.indexer.root, indexer=self.indexer)
-            work_req = deepcopy(req)
+            with FunctionExecutor() as executor:
+                ctx = ExecutionContext(root=self.indexer.root, indexer=self.indexer)
+                work_req = deepcopy(req)
 
-            max_steps = 3
-            steps = 0
-            final_text = ""
+                max_steps = 3
+                steps = 0
+                final_text = ""
 
-            while steps < max_steps:
-                steps += 1
-                result = provider_instance.invoke_with_tools(work_req, functions)  # type: ignore[attr-defined]
-                if "function_calls" not in result:
-                    final_text = result.get("text", "")
-                    break
+                while steps < max_steps:
+                    steps += 1
+                    result = provider_instance.invoke_with_tools(work_req, functions)  # type: ignore[attr-defined]
+                    if "function_calls" not in result:
+                        final_text = result.get("text", "")
+                        break
 
-                calls: list[FunctionCall] = result["function_calls"]
-                if not calls:
-                    final_text = ""
-                    break
+                    calls: list[FunctionCall] = result["function_calls"]
+                    if not calls:
+                        final_text = ""
+                        break
 
-                # Execute and append results
-                lines: list[str] = []
-                for call in calls:
-                    res = executor.execute_function(call, ctx)
-                    if res.success:
-                        out_text = f"[{res.name}]\n{res.output}"
-                        lines.append(out_text)
-                        # Stream tool output to client as we go
-                        for i in range(0, len(out_text), 200):
-                            yield json.dumps({"token": out_text[i:i+200], "finish": False})
-                    else:
-                        err_text = f"[{res.name}] ERROR: {res.error}"
-                        lines.append(err_text)
-                        for i in range(0, len(err_text), 200):
-                            yield json.dumps({"token": err_text[i:i+200], "finish": False})
-                tool_msg = "\n\n".join(lines)
+                    # Execute and append results
+                    lines: list[str] = []
+                    for call in calls:
+                        res = executor.execute_function(call, ctx)
+                        if res.success:
+                            out_text = f"[{res.name}]\n{res.output}"
+                            lines.append(out_text)
+                            # Stream tool output to client as we go
+                            for i in range(0, len(out_text), 200):
+                                yield json.dumps({"token": out_text[i:i+200], "finish": False})
+                        else:
+                            err_text = f"[{res.name}] ERROR: {res.error}"
+                            lines.append(err_text)
+                            for i in range(0, len(err_text), 200):
+                                yield json.dumps({"token": err_text[i:i+200], "finish": False})
+                    tool_msg = "\n\n".join(lines)
 
-                from codechat.models import ChatMessage
-                work_req.history.append(ChatMessage(role="assistant", content=tool_msg))
-                work_req.message = "Continue."
+                    from codechat.models import ChatMessage
+                    work_req.history.append(ChatMessage(role="assistant", content=tool_msg))
+                    work_req.message = "Continue."
 
-            # Stream out final_text in small chunks
-            if not final_text:
+                # Stream out final_text in small chunks
+                if not final_text:
+                    yield json.dumps({"token": "", "finish": True})
+                    return
+                chunk_size = 200
+                for i in range(0, len(final_text), chunk_size):
+                    yield json.dumps({"token": final_text[i:i+chunk_size], "finish": False})
                 yield json.dumps({"token": "", "finish": True})
-                return
-            chunk_size = 200
-            for i in range(0, len(final_text), chunk_size):
-                yield json.dumps({"token": final_text[i:i+chunk_size], "finish": False})
-            yield json.dumps({"token": "", "finish": True})
         except Exception as e:
             logger.error("Unexpected error during stream_with_functions", exception=str(e), exc_info=True)
             yield json.dumps({"error": True, "message": "An internal server error occurred during streaming.", "finish": True})
@@ -200,43 +200,43 @@ class LLMRouter:
             # Iterative loop
             max_steps = 3
             steps = 0
-            executor = FunctionExecutor()
-            ctx = ExecutionContext(root=self.indexer.root)
+            with FunctionExecutor() as executor:
+                ctx = ExecutionContext(root=self.indexer.root)
 
-            # Prepare a working copy we can mutate
-            from copy import deepcopy
-            work_req = deepcopy(req)
+                # Prepare a working copy we can mutate
+                from copy import deepcopy
+                work_req = deepcopy(req)
 
-            while steps < max_steps:
-                steps += 1
-                result = provider_instance.invoke_with_tools(work_req, functions)  # type: ignore[attr-defined]
+                while steps < max_steps:
+                    steps += 1
+                    result = provider_instance.invoke_with_tools(work_req, functions)  # type: ignore[attr-defined]
 
-                # If provider returned normal text, finish
-                if "function_calls" not in result:
-                    return result
+                    # If provider returned normal text, finish
+                    if "function_calls" not in result:
+                        return result
 
-                calls: list[FunctionCall] = result["function_calls"]
-                if not calls:
-                    return {"text": ""}
+                    calls: list[FunctionCall] = result["function_calls"]
+                    if not calls:
+                        return {"text": ""}
 
-                # Execute calls and append a concise assistant message with outputs
-                lines: list[str] = []
-                for call in calls:
-                    res = executor.execute_function(call, ctx)
-                    if res.success:
-                        lines.append(f"[{res.name}]\n{res.output}")
-                    else:
-                        lines.append(f"[{res.name}] ERROR: {res.error}")
-                tool_msg = "\n\n".join(lines)
+                    # Execute calls and append a concise assistant message with outputs
+                    lines: list[str] = []
+                    for call in calls:
+                        res = executor.execute_function(call, ctx)
+                        if res.success:
+                            lines.append(f"[{res.name}]\n{res.output}")
+                        else:
+                            lines.append(f"[{res.name}] ERROR: {res.error}")
+                    tool_msg = "\n\n".join(lines)
 
-                # Append tool results as assistant message and prompt the model to continue
-                from codechat.models import ChatMessage
-                work_req.history.append(ChatMessage(role="assistant", content=tool_msg))
-                work_req.message = "Continue."
+                    # Append tool results as assistant message and prompt the model to continue
+                    from codechat.models import ChatMessage
+                    work_req.history.append(ChatMessage(role="assistant", content=tool_msg))
+                    work_req.message = "Continue."
 
-            # Exceeded max steps; return what we have
-            logger.info("Max function-call steps reached", steps=steps)
-            return {"text": "Stopped after maximum tool-use steps."}
+                # Exceeded max steps; return what we have
+                logger.info("Max function-call steps reached", steps=steps)
+                return {"text": "Stopped after maximum tool-use steps."}
         except HTTPException:
             raise
         except Exception as e:
