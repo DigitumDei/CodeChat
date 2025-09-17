@@ -29,19 +29,19 @@ class LLMRouter:
         try:
             file_path_obj = Path(file_path_str)
             size = file_path_obj.stat().st_size
-            truncated = False
-            if size > self.max_snippet_bytes:
-                logger.warning(
-                    "File exceeds size limit; truncating for snippet.",
-                    path=file_path_str,
-                    size=size,
-                    limit=self.max_snippet_bytes,
-                )
-                with file_path_obj.open("r", encoding="utf-8", errors="ignore") as f:
-                    file_content = f.read(self.max_snippet_bytes)
-                truncated = True
-            else:
-                file_content = file_path_obj.read_text(encoding="utf-8")
+            truncated = size > self.max_snippet_bytes
+            with file_path_obj.open("rb") as f:
+                if truncated:
+                    logger.warning(
+                        "File exceeds size limit; truncating for snippet.",
+                        path=file_path_str,
+                        size=size,
+                        limit=self.max_snippet_bytes,
+                    )
+                    file_bytes = f.read(self.max_snippet_bytes)
+                else:
+                    file_bytes = f.read()
+            file_content = file_bytes.decode("utf-8", errors="ignore")
             content = f"# File: {file_path_obj.name}\n# Path: {file_path_str}\n\n{file_content}"
             if truncated:
                 content += "\n\n# [truncated]"
