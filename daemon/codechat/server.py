@@ -51,20 +51,20 @@ def health_check():
 async def handle_query(query: QueryRequest, stream: bool = Query(default=False), tools: bool = Query(default=False)):
     if stream:
         async def event_stream():
-            if tools:
-                async for chunk in router.stream_with_functions(query):
-                    chunkjson = json.loads(chunk)
-                    if chunkjson.get("token"):
-                        yield chunkjson.get("token")
-                return
-            async for chunk in router.stream(query):
-                #convert chunk back to json
-                chunkjson = json.loads(chunk)
-                if chunkjson.get("token"):
-                    yield chunkjson.get("token")
+            try:
+                generator = (
+                    router.stream_with_functions(query)
+                    if tools
+                    else router.stream(query)
+                )
+                async for chunk in generator:
+                    payload = chunk if isinstance(chunk, str) else json.dumps(chunk)
+                    yield f"data: {payload}\n\n"
+            except Exception as e:
+                error_payload = json.dumps({"error": str(e), "finish": True})
+                yield f"data: {error_payload}\n\n"
 
-        return StreamingResponse(event_stream(),
-                                 media_type="text/event-stream")
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
     if tools:
         result = router.process_request_with_functions(query)
     else:
