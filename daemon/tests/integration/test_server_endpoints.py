@@ -1,6 +1,7 @@
 # tests/integration/test_server_endpoints.py
-import json
 import importlib
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -82,3 +83,20 @@ def test_stream_sse_error(client, server_module, monkeypatch):
 
     assert events[-1]["error"] == "boom"
     assert events[-1]["finish"] is True
+
+
+def test_provider_missing_text_error(client, monkeypatch):
+    def fake_route(query):
+        return {}
+
+    monkeypatch.setattr("codechat.server.router.route", fake_route)
+
+    req = {
+        "provider": "openai",
+        "model": "gpt-4",
+        "message": "hello",
+    }
+    res = client.post("/query", json=req)
+    assert res.status_code == 500
+    payload = res.json()
+    assert payload["error"]["code"] == "INVALID_PROVIDER_RESPONSE"
