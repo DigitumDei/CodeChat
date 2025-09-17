@@ -15,3 +15,20 @@ def test_validation_error(client):
     assert res.status_code == 422
     payload = res.json()
     assert payload["error"]["code"] == "VALIDATION_ERR"
+
+
+def test_provider_missing_text_error(client, monkeypatch):
+    def fake_route(query):
+        return {}
+
+    monkeypatch.setattr("codechat.server.router.route", fake_route)
+
+    req = {
+        "provider": "openai",
+        "model": "gpt-4",
+        "message": "hello"
+    }
+    res = client.post("/query", json=req)
+    assert res.status_code == 500
+    payload = res.json()
+    assert payload["error"]["code"] == "INVALID_PROVIDER_RESPONSE"
