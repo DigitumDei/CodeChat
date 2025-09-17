@@ -18,20 +18,18 @@ def test_read_file_success(tmp_path: Path):
     p.write_text("hello world", encoding="utf-8")
 
     ctx = ExecutionContext(root=tmp_path)
-    executor = FunctionExecutor()
-    call = FunctionCall(name="read_file", arguments={"path": "hello.txt"})
-
-    res = executor.execute_function(call, ctx)
+    with FunctionExecutor() as executor:
+        call = FunctionCall(name="read_file", arguments={"path": "hello.txt"})
+        res = executor.execute_function(call, ctx)
     assert res.success
     assert "hello world" in str(res.output)
 
 
 def test_read_file_prevents_escape(tmp_path: Path):
     ctx = ExecutionContext(root=tmp_path)
-    executor = FunctionExecutor()
-    call = FunctionCall(name="read_file", arguments={"path": "../outside.txt"})
-
-    res = executor.execute_function(call, ctx)
+    with FunctionExecutor() as executor:
+        call = FunctionCall(name="read_file", arguments={"path": "../outside.txt"})
+        res = executor.execute_function(call, ctx)
     assert not res.success
     assert "escape" in (res.error or "") or "Absolute" in (res.error or "")
 
@@ -41,10 +39,9 @@ def test_read_file_max_bytes(tmp_path: Path):
     p.write_text("abcdefghij", encoding="utf-8")  # 10 bytes ASCII
 
     ctx = ExecutionContext(root=tmp_path)
-    executor = FunctionExecutor()
-    call = FunctionCall(name="read_file", arguments={"path": "data.txt", "max_bytes": 5})
-
-    res = executor.execute_function(call, ctx)
+    with FunctionExecutor() as executor:
+        call = FunctionCall(name="read_file", arguments={"path": "data.txt", "max_bytes": 5})
+        res = executor.execute_function(call, ctx)
     assert res.success
     assert str(res.output) == "abcde"
 

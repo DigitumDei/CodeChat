@@ -28,7 +28,6 @@ def test_validation_error(client):
     payload = res.json()
     assert payload["error"]["code"] == "VALIDATION_ERR"
 
-
 def test_stream_sse(client, server_module, monkeypatch):
     async def fake_stream(_: server_module.QueryRequest):
         for chunk in [
@@ -94,7 +93,7 @@ def test_provider_missing_text_error(client, monkeypatch):
     req = {
         "provider": "openai",
         "model": "gpt-4",
-        "message": "hello",
+        "message": "hello"
     }
     res = client.post("/query", json=req)
     assert res.status_code == 500
