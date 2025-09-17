@@ -1,11 +1,12 @@
 from pathlib import Path
 from fastapi import HTTPException
 from codechat.models import QueryRequest, Snippet, SnippetType
-import json 
+import json
 from codechat.providers import get as get_provider
-from codechat.indexer import Indexer # Import Indexer
+from codechat.indexer import Indexer  # Import Indexer
 from codechat.functions import get_global_registry, FunctionExecutor
 from codechat.functions.models import ExecutionContext, FunctionCall
+from codechat.config import get_config
 
 import structlog
 logger = structlog.get_logger(__name__)
@@ -13,7 +14,12 @@ logger = structlog.get_logger(__name__)
 class LLMRouter:
     def __init__(self, indexer: Indexer):
         self.indexer = indexer
+        self.reload_config()
         from codechat import providers  # noqa: F401 auto‑import side‑effects
+
+    def reload_config(self) -> None:
+        cfg = get_config()
+        self.max_snippet_bytes = int(cfg.get("router.max_snippet_bytes", 1_000_000))
 
     def _create_snippet_from_file_path(self, file_path_str: str, source_description: str) -> Snippet | None:
         """
@@ -22,9 +28,23 @@ class LLMRouter:
         """
         try:
             file_path_obj = Path(file_path_str)
-            file_content = file_path_obj.read_text(encoding="utf-8")
-            # Using file_path_str for the original path as provided
+            size = file_path_obj.stat().st_size
+            truncated = size > self.max_snippet_bytes
+            with file_path_obj.open("rb") as f:
+                if truncated:
+                    logger.warning(
+                        "File exceeds size limit; truncating for snippet.",
+                        path=file_path_str,
+                        size=size,
+                        limit=self.max_snippet_bytes,
+                    )
+                    file_bytes = f.read(self.max_snippet_bytes)
+                else:
+                    file_bytes = f.read()
+            file_content = file_bytes.decode("utf-8", errors="ignore")
             content = f"# File: {file_path_obj.name}\n# Path: {file_path_str}\n\n{file_content}"
+            if truncated:
+                content += "\n\n# [truncated]"
             return Snippet(type=SnippetType.FILE, content=content)
         except UnicodeDecodeError:
             logger.warning(f"Could not decode {source_description} file as UTF-8. Skipping.", path=file_path_str)
