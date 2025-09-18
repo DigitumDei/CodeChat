@@ -51,15 +51,15 @@ class LLMRouter:
                 if snippet:
                     snippets.append(snippet)
                     processed_snippet_paths.append(file_path_str)
-        else:
-            logger.info("No client files provided for context, querying VDB.")
-            context_source = "vdb_query"
-            results = self.indexer.query(req.message, top_k=top_k)
-            for item in results:
-                snippet = self._create_snippet_from_file_path(item['path'], "VDB")
-                if snippet:
-                    snippets.append(snippet)
-                    processed_snippet_paths.append(item['path'])
+        # else:
+        #     logger.info("No client files provided for context, querying VDB.")
+        #     context_source = "vdb_query"
+        #     results = self.indexer.query(req.message, top_k=top_k)
+        #     for item in results:
+        #         snippet = self._create_snippet_from_file_path(item['path'], "VDB")
+        #         if snippet:
+        #             snippets.append(snippet)
+        #             processed_snippet_paths.append(item['path'])
 
         req.context.snippets = snippets
         if processed_snippet_paths:

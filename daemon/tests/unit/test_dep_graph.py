@@ -240,7 +240,7 @@ import numpy as np
         
         dep_graph = DepGraph()
         temp_files = []
-        
+        temp_dir = None
         try:
             # Create temporary directory structure for namespace package test
             import tempfile
@@ -280,7 +280,7 @@ import numpy as np
                 if temp_file.exists():
                     temp_file.unlink()
             # Clean up directories
-            if 'temp_dir' in locals():
+            if 'temp_dir' in locals() and temp_dir is not None:
                 import shutil
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
@@ -762,7 +762,7 @@ class TestGraphBuilding:
         """Test that files with same stems in different directories get unique node IDs."""
         dep_graph = DepGraph()
         temp_files = []
-        
+        temp_dir = None
         try:
             # Create temporary directory structure to simulate a/utils.py and b/utils.py
             import tempfile
@@ -825,7 +825,7 @@ import b.utils
                 if temp_file.exists():
                     temp_file.unlink()
             # Clean up directories
-            if 'temp_dir' in locals():
+            if 'temp_dir' in locals() and temp_dir is not None:
                 import shutil
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -980,8 +980,8 @@ class TestEdgeCasesAndErrorHandling:
         path_b = pathlib.Path("B.py")
         
         # Mock the file identifier method to return the simple node names
-        def mock_get_file_id(path):
-            return path.stem
+        def mock_get_file_id(file_path):
+            return file_path.stem
         dep_graph._get_file_identifier_if_valid = mock_get_file_id
         
         # Should handle circular deps without infinite loops
@@ -995,7 +995,7 @@ class TestEdgeCasesAndErrorHandling:
         """Test comprehensive transitives & cycles: A→B→C with cycle C→A, verify stability."""
         dep_graph = DepGraph()
         temp_files = []
-        
+        temp_dir = None
         try:
             # Create temporary directory structure for A→B→C with cycle C→A
             import tempfile
@@ -1067,7 +1067,7 @@ class TestEdgeCasesAndErrorHandling:
             for temp_file in temp_files:
                 if temp_file.exists():
                     temp_file.unlink()
-            if 'temp_dir' in locals():
+            if 'temp_dir' in locals() and temp_dir is not None:
                 import shutil
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
@@ -1084,8 +1084,8 @@ class TestEdgeCasesAndErrorHandling:
         end_path = pathlib.Path("999.py")
         
         # Mock the file identifier method to return the simple node names
-        def mock_get_file_id(path):
-            return path.stem
+        def mock_get_file_id(file_path):
+            return file_path.stem
         dep_graph._get_file_identifier_if_valid = mock_get_file_id
         
         all_deps = dep_graph.get_all_dependencies(start_path)

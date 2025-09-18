@@ -1,6 +1,6 @@
 # codechat/providers/openai.py
 import json
-from typing import AsyncIterator
+from typing import AsyncIterator, Any, cast
 from fastapi import HTTPException
 from openai import OpenAI, AsyncOpenAI, APIStatusError  # type: ignore[attr-defined] # openai > 1.0 has this
 from codechat.providers import ProviderInterface, register
@@ -84,10 +84,11 @@ class OpenAIProvider(ProviderInterface):
         tools = self._translate_tools(functions)
 
         try:
+            tools_param = cast(Any, tools)
             resp = self._client().responses.create(
                 model=req.model,
                 input=messages,
-                tools=tools,
+                tools=tools_param,
             )
 
             # Prefer text if present
